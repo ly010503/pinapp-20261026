@@ -19,7 +19,7 @@ export class ResultCanvasRenderer {
       const cell = Math.max(6, Math.min(13, Math.floor(700 / pattern.width)));
       drawEffect(ctx, pattern, state.palette, { cell, highlightedCode: state.highlightedCode });
     } else {
-      const cell = pattern.width <= 40 ? 16 : pattern.width <= 60 ? 14 : 12;
+      const cell = pattern.width <= 30 ? 22 : pattern.width <= 40 ? 20 : pattern.width <= 60 ? 18 : 16;
       drawPatternSheet(ctx, pattern, state.palette, state.statistics, { cell, highlightedCode: state.highlightedCode });
     }
     this.draw();

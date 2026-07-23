@@ -1,4 +1,13 @@
 const number = new Intl.NumberFormat('zh-CN');
+export const GUIDE_STEP = 5;
+
+export function getCoordinateValues(length, step = GUIDE_STEP) {
+  const values = [1];
+  for (let value = step; value <= length; value += step) {
+    if (value !== 1) values.push(value);
+  }
+  return values;
+}
 
 export function colorLuminance(rgb) {
   const [r, g, b] = rgb.map((value) => {
@@ -90,26 +99,34 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, { cell = 14,
   }
   ctx.globalAlpha = 1;
 
-  ctx.strokeStyle = '#D7D9DE'; ctx.lineWidth = 1; ctx.beginPath();
+  ctx.strokeStyle = '#C9CDD5'; ctx.lineWidth = 1; ctx.beginPath();
   for (let x = 0; x <= pattern.width; x += 1) { const px = Math.round(gridX + x * cell) + 0.5; ctx.moveTo(px, gridY); ctx.lineTo(px, gridY + gridHeight); }
   for (let y = 0; y <= pattern.height; y += 1) { const py = Math.round(gridY + y * cell) + 0.5; ctx.moveTo(gridX, py); ctx.lineTo(gridX + gridWidth, py); }
   ctx.stroke();
 
-  ctx.strokeStyle = '#7C818B'; ctx.lineWidth = Math.max(2, Math.round(cell / 8)); ctx.beginPath();
-  for (let x = 10; x < pattern.width; x += 10) { const px = gridX + x * cell; ctx.moveTo(px, gridY); ctx.lineTo(px, gridY + gridHeight); }
-  for (let y = 10; y < pattern.height; y += 10) { const py = gridY + y * cell; ctx.moveTo(gridX, py); ctx.lineTo(gridX + gridWidth, py); }
+  ctx.strokeStyle = '#8982A8'; ctx.lineWidth = Math.max(2, Math.round(cell / 7)); ctx.beginPath();
+  for (let x = GUIDE_STEP; x < pattern.width; x += GUIDE_STEP) { const px = Math.round(gridX + x * cell); ctx.moveTo(px, gridY); ctx.lineTo(px, gridY + gridHeight); }
+  for (let y = GUIDE_STEP; y < pattern.height; y += GUIDE_STEP) { const py = Math.round(gridY + y * cell); ctx.moveTo(gridX, py); ctx.lineTo(gridX + gridWidth, py); }
   ctx.stroke();
+  ctx.strokeStyle = '#706A88'; ctx.lineWidth = Math.max(2, Math.round(cell / 6));
+  ctx.strokeRect(Math.round(gridX), Math.round(gridY), gridWidth, gridHeight);
 
-  ctx.font = `600 ${Math.max(5, Math.floor(cell * 0.3))}px Arial, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `700 ${Math.max(6, Math.floor(cell * 0.4))}px "Arial Narrow", Arial, sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
     const color = palette[pattern.indices[y * pattern.width + x]];
-    ctx.fillStyle = colorLuminance(color.rgb) < 0.36 ? 'rgba(255,255,255,.92)' : '#303039';
-    ctx.fillText(color.code, gridX + (x + 0.5) * cell, gridY + (y + 0.53) * cell);
+    const dark = colorLuminance(color.rgb) < 0.36;
+    const tx = gridX + (x + 0.5) * cell, ty = gridY + (y + 0.52) * cell;
+    ctx.lineWidth = Math.max(0.75, cell * 0.045);
+    ctx.strokeStyle = dark ? 'rgba(0,0,0,.38)' : 'rgba(255,255,255,.76)';
+    ctx.fillStyle = dark ? '#FFFFFF' : '#25232B';
+    ctx.strokeText(color.code, tx, ty, cell - 2);
+    ctx.fillText(color.code, tx, ty, cell - 2);
   }
 
-  ctx.fillStyle = '#565A63'; ctx.font = `600 ${Math.max(9, Math.round(cell * 0.5))}px Arial, sans-serif`; ctx.textAlign = 'center';
-  const xValues = [1, ...Array.from({ length: Math.floor(pattern.width / 10) }, (_, i) => (i + 1) * 10)].filter((v) => v <= pattern.width);
-  const yValues = [1, ...Array.from({ length: Math.floor(pattern.height / 10) }, (_, i) => (i + 1) * 10)].filter((v) => v <= pattern.height);
+  ctx.fillStyle = '#565A63'; ctx.font = `700 ${Math.max(9, Math.round(cell * 0.5))}px Arial, sans-serif`; ctx.textAlign = 'center';
+  const xValues = getCoordinateValues(pattern.width);
+  const yValues = getCoordinateValues(pattern.height);
   xValues.forEach((value) => { const px = gridX + (value - 0.5) * cell; ctx.fillText(value, px, gridY - layout.coordinate * 0.5); ctx.fillText(value, px, gridY + gridHeight + layout.coordinate * 0.5); });
   yValues.forEach((value) => { const py = gridY + (value - 0.5) * cell; ctx.textAlign = 'right'; ctx.fillText(value, gridX - 7, py); ctx.textAlign = 'left'; ctx.fillText(value, gridX + gridWidth + 7, py); });
 

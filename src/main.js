@@ -260,6 +260,10 @@ function setMode(mode) {
     button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active));
   });
   renderer.rebuild(); renderer.fit();
+  if (mode === 'pattern' && window.matchMedia('(max-width: 760px)').matches) {
+    const rect = $('#resultStage').getBoundingClientRect();
+    renderer.zoomAt(1.7, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
 }
 
 async function copyList() {

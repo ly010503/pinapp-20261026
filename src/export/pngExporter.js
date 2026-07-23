@@ -11,7 +11,7 @@ function download(blob, name) {
 
 function preferredCell(pattern, type) {
   if (type === 'effect') return pattern.width <= 30 ? 32 : pattern.width <= 40 ? 26 : pattern.width <= 60 ? 20 : 16;
-  return pattern.width <= 30 ? 40 : pattern.width <= 40 ? 32 : pattern.width <= 60 ? 26 : 22;
+  return pattern.width <= 30 ? 44 : pattern.width <= 40 ? 36 : pattern.width <= 60 ? 30 : 26;
 }
 
 function safeCell(pattern, statistics, type) {
