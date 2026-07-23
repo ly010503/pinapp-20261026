@@ -1,5 +1,5 @@
 import { deltaE76, rgbToLab } from '../color/colorSpace.js';
-import { choosePaletteIndices } from '../pattern/paletteLimit.js';
+import { choosePaletteIndices, shouldProtectAccent } from '../pattern/paletteLimit.js';
 
 function postProgress(progress, text) { self.postMessage({ type: 'progress', progress, text }); }
 
@@ -24,7 +24,9 @@ function cleanIsolated(indices, width, height, palette) {
     }
     const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
     if (dominant && dominant[1] >= 5 && dominant[0] !== current && (counts.get(current) || 0) <= 1) {
-      if (deltaE76(palette[current].lab, palette[dominant[0]].lab) < 32) result[pos] = dominant[0];
+      const currentColor = palette[current], dominantColor = palette[dominant[0]];
+      const protectedAccent = shouldProtectAccent(currentColor, dominantColor);
+      if (!protectedAccent && deltaE76(currentColor.lab, dominantColor.lab) < 32) result[pos] = dominant[0];
     }
   }
   return result;
@@ -51,7 +53,7 @@ self.onmessage = ({ data }) => {
       raw[i] = index; counts[index] += 1;
       if (i > 0 && i % 12000 === 0) postProgress(34 + Math.round((i / raw.length) * 30), '正在匹配色卡');
     }
-    let allowed = choosePaletteIndices(counts, maxColors, raw.length);
+    let allowed = choosePaletteIndices(counts, maxColors, raw.length, palette);
     if (mergeColors) {
       const merged = [];
       for (const index of allowed) {
