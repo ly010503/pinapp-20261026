@@ -1,0 +1,70 @@
+function isWhiteLike(color) {
+  if (!color?.rgb) return false;
+  const [r, g, b] = color.rgb;
+  const maximum = Math.max(r, g, b);
+  const minimum = Math.min(r, g, b);
+  return (r + g + b) / 3 >= 235 && maximum - minimum <= 38;
+}
+
+function rgbDistance(a, b) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+/**
+ * 只标记从图纸四周连通的白色区域。
+ * 被轮廓包围的主体白色即使色号相同，也不会进入背景遮罩。
+ */
+export function createWhiteBackgroundMask(pattern, palette) {
+  const { width, height, indices } = pattern;
+  const mask = new Uint8Array(width * height);
+  if (!width || !height || !indices?.length) return mask;
+
+  const edgeCounts = new Map();
+  const countEdge = (position) => {
+    const index = indices[position];
+    if (isWhiteLike(palette[index])) edgeCounts.set(index, (edgeCounts.get(index) || 0) + 1);
+  };
+  for (let x = 0; x < width; x += 1) {
+    countEdge(x);
+    if (height > 1) countEdge((height - 1) * width + x);
+  }
+  for (let y = 1; y < height - 1; y += 1) {
+    countEdge(y * width);
+    if (width > 1) countEdge(y * width + width - 1);
+  }
+
+  const dominant = [...edgeCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (!dominant) return mask;
+  const backgroundRgb = palette[dominant[0]].rgb;
+  const queue = new Uint32Array(width * height);
+  let head = 0, tail = 0;
+
+  const enqueue = (position) => {
+    if (mask[position]) return;
+    const color = palette[indices[position]];
+    if (!isWhiteLike(color) || rgbDistance(color.rgb, backgroundRgb) > 18) return;
+    mask[position] = 1;
+    queue[tail] = position;
+    tail += 1;
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueue(x);
+    enqueue((height - 1) * width + x);
+  }
+  for (let y = 1; y < height - 1; y += 1) {
+    enqueue(y * width);
+    enqueue(y * width + width - 1);
+  }
+
+  while (head < tail) {
+    const position = queue[head];
+    head += 1;
+    const x = position % width, y = Math.floor(position / width);
+    if (x > 0) enqueue(position - 1);
+    if (x + 1 < width) enqueue(position + 1);
+    if (y > 0) enqueue(position - width);
+    if (y + 1 < height) enqueue(position + width);
+  }
+  return mask;
+}

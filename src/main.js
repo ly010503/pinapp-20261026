@@ -9,6 +9,7 @@ import { getColorStyleAdjustments } from './image/colorStyle.js';
 import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
 import { calculateStatistics, statisticsTotal } from './pattern/statistics.js';
+import { createWhiteBackgroundMask } from './pattern/backgroundMask.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
 import { exportEffectPng, exportPatternPng } from './export/pngExporter.js';
 import { notify } from './ui/notifications.js';
@@ -217,6 +218,7 @@ async function generate() {
       onProgress: updateProgress,
     });
     if (version !== generationVersion) return;
+    pattern.backgroundMask = createWhiteBackgroundMask(pattern, state.palette);
     const statistics = calculateStatistics(pattern.indices, state.palette);
     if (statisticsTotal(statistics) !== width * height) throw new Error('颜色统计校验失败，请重新生成');
     Object.assign(state, { currentPattern: pattern, statistics, highlightedCode: null, dirty: false, previewMode: 'effect' });

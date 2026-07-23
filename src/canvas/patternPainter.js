@@ -114,7 +114,9 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, { cell = 14,
   ctx.font = `700 ${Math.max(6, Math.floor(cell * 0.4))}px "Arial Narrow", Arial, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
-    const color = palette[pattern.indices[y * pattern.width + x]];
+    const position = y * pattern.width + x;
+    if (pattern.backgroundMask?.[position]) continue;
+    const color = palette[pattern.indices[position]];
     const dark = colorLuminance(color.rgb) < 0.36;
     const tx = gridX + (x + 0.5) * cell, ty = gridY + (y + 0.52) * cell;
     ctx.lineWidth = Math.max(0.75, cell * 0.045);
