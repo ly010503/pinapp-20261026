@@ -62,6 +62,20 @@
               <p class="palette-note"><strong>MARD 标准 221 色</strong> · 屏幕颜色为近似值，购豆请以色号和实体色卡为准。</p>
             </article>
 
+            <article class="card choice-card">
+              <div class="step-heading"><span class="step-number blue">5</span><div><h2>想要什么颜色效果？</h2><p>只影响选色效果，不会改变MARD色号</p></div></div>
+              <div id="colorStyleCards" class="style-cards" role="radiogroup" aria-label="选择颜色效果">
+                <button class="style-card" data-color-style="natural" role="radio" aria-checked="false">
+                  <span class="style-dots natural-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <strong>自然</strong><small>接近原图，颜色更柔和</small>
+                </button>
+                <button class="style-card active" data-color-style="vivid" role="radio" aria-checked="true">
+                  <span class="style-dots vivid-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <strong>鲜艳</strong><em>推荐</em><small>颜色更浓郁、更有冲击力</small>
+                </button>
+              </div>
+            </article>
+
             <p id="dirtyNotice" class="dirty-notice" hidden>设置已修改，请重新生成图纸</p>
             <button id="generateButton" class="primary-button"><span aria-hidden="true">✦</span> 生成我的拼豆图纸</button>
           </div>
@@ -114,8 +128,8 @@
         </article>
 
         <div class="save-actions" aria-label="保存图纸">
-          <button id="saveEffect" class="secondary-save"><span>▧</span>保存效果图</button>
-          <button id="savePattern" class="primary-button"><span>⇩</span>保存制作图</button>
+          <button id="saveEffect" class="secondary-save"><span>▧</span>保存高清效果图</button>
+          <button id="savePattern" class="primary-button"><span>⇩</span>保存高清制作图</button>
         </div>
       </section>
     </main>

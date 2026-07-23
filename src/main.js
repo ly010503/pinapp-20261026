@@ -5,6 +5,7 @@ import { PATTERN_SIZES, COLOR_OPTIONS, MAX_FILE_BYTES, SUPPORTED_TYPES } from '.
 import { store } from './state/store.js';
 import { preparePalette } from './color/colorMatcher.js';
 import { createAdjustedCanvas, getGridPixels } from './image/imageProcessor.js';
+import { getColorStyleAdjustments } from './image/colorStyle.js';
 import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
 import { calculateStatistics, statisticsTotal } from './pattern/statistics.js';
@@ -93,7 +94,7 @@ function markDirty() {
 
 function drawSourcePreview() {
   if (!state.image) return;
-  const source = createAdjustedCanvas(state.image, state.transform, state.adjustments, 1000, state.crop);
+  const source = createAdjustedCanvas(state.image, state.transform, getColorStyleAdjustments(state.adjustments, state.colorStyle), 1000, state.crop);
   const canvas = $('#sourcePreview');
   const frame = canvas.parentElement.getBoundingClientRect();
   const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -204,7 +205,7 @@ async function generate() {
   $('#progressFill').style.width = '8%'; updateProgress(8);
   try {
     await new Promise(requestAnimationFrame);
-    const adjusted = createAdjustedCanvas(state.image, state.transform, state.adjustments, 1800, state.crop);
+    const adjusted = createAdjustedCanvas(state.image, state.transform, getColorStyleAdjustments(state.adjustments, state.colorStyle), 1800, state.crop);
     const { width, height } = state.currentSize;
     const pixels = getGridPixels(adjusted, width, height);
     const pattern = await generatePattern({
@@ -300,6 +301,13 @@ function bindChoices() {
     const button = event.target.closest('.color-card'); if (!button) return;
     state.maxColors = Number(button.dataset.colors); setChoiceActive($('#colorCards'), button); markDirty();
   });
+  $('#colorStyleCards').addEventListener('click', (event) => {
+    const button = event.target.closest('.style-card'); if (!button) return;
+    state.colorStyle = button.dataset.colorStyle;
+    setChoiceActive($('#colorStyleCards'), button);
+    markDirty();
+    drawSourcePreview();
+  });
 }
 
 const cropper = new CropperController({
@@ -344,11 +352,11 @@ function bindResults() {
     } catch { notify('当前浏览器不支持全屏查看', 'error'); }
   });
   $('#saveEffect').addEventListener('click', async () => {
-    try { const result = await exportEffectPng(state.currentPattern, state.palette); if (result.reduced) notify('当前图纸较大，已自动降低导出分辨率，图纸内容和编号不会受影响。'); else notify('效果图已保存', 'success'); }
+    try { const result = await exportEffectPng(state.currentPattern, state.palette); if (result.reduced) notify(`设备内存有限，已安全导出 ${result.width}×${result.height}px，图纸内容不受影响。`); else notify(`高清效果图已保存（${result.width}×${result.height}px）`, 'success'); }
     catch (error) { notify(error.message || '保存失败，请重试', 'error', 5000); }
   });
   $('#savePattern').addEventListener('click', async () => {
-    try { const result = await exportPatternPng(state.currentPattern, state.palette, state.statistics); if (result.reduced) notify('当前图纸较大，已自动降低导出分辨率，图纸内容和编号不会受影响。'); else notify('制作图已保存', 'success'); }
+    try { const result = await exportPatternPng(state.currentPattern, state.palette, state.statistics); if (result.reduced) notify(`设备内存有限，已安全导出 ${result.width}×${result.height}px，色号和网格不受影响。`); else notify(`高清制作图已保存（${result.width}×${result.height}px）`, 'success'); }
     catch (error) { notify(error.message || '保存失败，请重试', 'error', 5000); }
   });
 }

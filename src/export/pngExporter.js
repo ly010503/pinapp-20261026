@@ -9,9 +9,9 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-function preferredCell(pattern, type) {
-  if (type === 'effect') return pattern.width <= 30 ? 32 : pattern.width <= 40 ? 26 : pattern.width <= 60 ? 20 : 16;
-  return pattern.width <= 30 ? 44 : pattern.width <= 40 ? 36 : pattern.width <= 60 ? 30 : 26;
+export function preferredCell(pattern, type) {
+  if (type === 'effect') return pattern.width <= 30 ? 48 : pattern.width <= 40 ? 42 : pattern.width <= 60 ? 34 : 30;
+  return pattern.width <= 30 ? 64 : pattern.width <= 40 ? 54 : pattern.width <= 60 ? 44 : 36;
 }
 
 function safeCell(pattern, statistics, type) {
@@ -43,22 +43,41 @@ async function toBlob(canvas) {
   return blob;
 }
 
+async function renderWithFallback(draw, selection) {
+  let cell = selection.cell;
+  let lastError;
+  while (cell >= 12) {
+    const canvas = document.createElement('canvas');
+    try {
+      const ctx = canvas.getContext('2d');
+      draw(ctx, cell);
+      const blob = await toBlob(canvas);
+      return { blob, width: canvas.width, height: canvas.height, cell, reduced: selection.reduced || cell < selection.cell };
+    } catch (error) {
+      lastError = error;
+      canvas.width = 1; canvas.height = 1;
+      cell -= 4;
+    }
+  }
+  throw lastError || new Error('PNG 生成失败，请尝试较小的图纸尺寸');
+}
+
 export async function exportEffectPng(pattern, palette) {
   const selection = safeCell(pattern, [], 'effect');
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  drawEffect(ctx, pattern, palette, { cell: selection.cell, background: '#FFFDF8' });
-  const blob = await toBlob(canvas);
-  download(blob, `拼豆效果图-${pattern.width}x${pattern.height}.png`);
-  return { blob, width: canvas.width, height: canvas.height, ...selection };
+  const result = await renderWithFallback(
+    (ctx, cell) => drawEffect(ctx, pattern, palette, { cell, background: '#FFFDF8' }),
+    selection,
+  );
+  download(result.blob, `拼豆高清效果图-${pattern.width}x${pattern.height}.png`);
+  return result;
 }
 
 export async function exportPatternPng(pattern, palette, statistics) {
   const selection = safeCell(pattern, statistics, 'pattern');
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  drawPatternSheet(ctx, pattern, palette, statistics, { cell: selection.cell });
-  const blob = await toBlob(canvas);
-  download(blob, `拼豆制作图-${pattern.width}x${pattern.height}.png`);
-  return { blob, width: canvas.width, height: canvas.height, ...selection };
+  const result = await renderWithFallback(
+    (ctx, cell) => drawPatternSheet(ctx, pattern, palette, statistics, { cell }),
+    selection,
+  );
+  download(result.blob, `拼豆高清制作图-${pattern.width}x${pattern.height}.png`);
+  return result;
 }

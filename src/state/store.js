@@ -8,6 +8,7 @@ const state = {
   crop: null,
   transform: { rotation: 0, flipH: false, flipV: false },
   adjustments: { brightness: 0, contrast: 0, saturation: 0, sharpen: 10, smoothing: 10 },
+  colorStyle: 'vivid',
   palette: [],
   maxColors: 24,
   currentSize: { ...DEFAULT_SIZE },
