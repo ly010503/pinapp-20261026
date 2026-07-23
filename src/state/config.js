@@ -6,10 +6,10 @@ export const PATTERN_SIZES = [
 ];
 
 export const COLOR_OPTIONS = [
-  { value: 12, label: '最多 12 色', description: '材料较少，制作更轻松' },
   { value: 24, label: '最多 24 色', description: '效果和难度更均衡', recommended: true },
-  { value: 36, label: '最多 36 色', description: '适合保留更多细节' },
-  { value: 48, label: '最多 48 色', description: '尽量保留完整颜色' },
+  { value: 48, label: '最多 48 色', description: '适合保留更多细节' },
+  { value: 96, label: '最多 96 色', description: '颜色层次更加丰富' },
+  { value: 221, label: '最多 221 色', description: '开放完整标准色库' },
 ];
 
 export const DEFAULT_SIZE = { width: 60, height: 90 };

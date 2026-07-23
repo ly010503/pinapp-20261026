@@ -1,6 +1,6 @@
 import 'cropperjs/dist/cropper.css';
 import './styles/app.css';
-import paletteJson from './data/palettes/universal-48.json';
+import paletteJson from './data/palettes/mard-221.json';
 import { PATTERN_SIZES, COLOR_OPTIONS, MAX_FILE_BYTES, SUPPORTED_TYPES } from './state/config.js';
 import { store } from './state/store.js';
 import { preparePalette } from './color/colorMatcher.js';
@@ -356,4 +356,4 @@ window.addEventListener('resize', () => { if (state.image) drawSourcePreview(); 
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && state.highlightedCode) { state.highlightedCode = null; renderColorList(); renderer.rebuild(); } });
 renderer.resize();
 
-if (state.palette.length < 48) notify('通用色卡加载不完整，请刷新页面', 'error');
+if (state.palette.length !== 221) notify('MARD 221 色卡加载不完整，请刷新页面', 'error');
