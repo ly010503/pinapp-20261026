@@ -1,0 +1,18 @@
+{
+  "name": "perler-pattern-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build && node scripts/prepare-sites-build.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.37.1",
+    "cropperjs": "^1.6.2",
+    "vite": "^7.0.0",
+    "wrangler": "^4.92.0"
+  }
+}

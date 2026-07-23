@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#F8F4EC" />
+    <meta name="description" content="在浏览器本地把喜欢的图片变成清晰、可照着制作的拼豆图纸。" />
+    <title>拼豆图纸生成器</title>
+    <link rel="icon" href="/favicon.svg" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero-decor decor-left" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="brand-lockup">
+        <div class="bead-logo" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div><h1>拼豆图纸生成器</h1><p>把喜欢的图片变成可以照着制作的拼豆图纸</p></div>
+      </div>
+      <div class="hero-decor decor-right" aria-hidden="true"><i></i><i></i><i></i></div>
+    </header>
+
+    <main class="page-shell">
+      <section class="creator-layout" aria-label="制作拼豆图纸">
+        <div class="setup-column">
+          <article class="card upload-card">
+            <div class="step-heading"><span class="step-number">1</span><div><h2>上传一张你喜欢的图片</h2><p>照片、动漫、宠物、头像都可以</p></div></div>
+            <div id="uploadZone" class="upload-zone" tabindex="0" role="button" aria-label="上传图片">
+              <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+              <div id="uploadPrompt" class="upload-prompt">
+                <div class="upload-sticker" aria-hidden="true">＋</div>
+                <strong>从相册选择图片</strong><span>支持 JPG / PNG / WebP</span>
+              </div>
+              <div id="uploadedSummary" class="uploaded-summary" hidden>
+                <img id="uploadThumbnail" alt="已上传图片预览" />
+                <div><strong id="uploadedName"></strong><span id="uploadedMeta"></span></div>
+              </div>
+            </div>
+            <p class="privacy-note"><span aria-hidden="true">♡</span> 图片只在你的浏览器中处理，不会上传到服务器</p>
+          </article>
+
+          <div id="settingsArea" hidden>
+            <article class="card edit-card">
+              <div class="step-heading"><span class="step-number mint">2</span><div><h2>简单编辑一下</h2><p>让主体更突出，图纸会更好看</p></div></div>
+              <div class="edit-actions">
+                <button id="cropButton"><span>⌗</span>裁剪</button>
+                <button data-transform="rotateLeft"><span>↶</span>左旋</button>
+                <button data-transform="rotateRight"><span>↷</span>右旋</button>
+                <button data-transform="flipH"><span>↔</span>翻转</button>
+                <button data-transform="reset"><span>↺</span>恢复</button>
+              </div>
+              <button id="replaceImage" class="text-button">重新上传</button>
+            </article>
+
+            <article class="card choice-card">
+              <div class="step-heading"><span class="step-number yellow">3</span><div><h2>想做多大的图纸？</h2><p>尺寸越大，细节越丰富</p></div></div>
+              <div id="sizeCards" class="size-cards" role="radiogroup" aria-label="选择图纸尺寸"></div>
+            </article>
+
+            <article class="card choice-card">
+              <div class="step-heading"><span class="step-number pink">4</span><div><h2>最多允许多少种颜色？</h2><p>系统会自动识别实际颜色，你只需设置上限</p></div></div>
+              <div id="colorCards" class="color-cards" role="radiogroup" aria-label="选择最大颜色数量上限"></div>
+              <p class="auto-color-note">自动识别不会强行用满颜色，最终数量会显示在用豆清单中。</p>
+            </article>
+
+            <p id="dirtyNotice" class="dirty-notice" hidden>设置已修改，请重新生成图纸</p>
+            <button id="generateButton" class="primary-button"><span aria-hidden="true">✦</span> 生成我的拼豆图纸</button>
+          </div>
+        </div>
+
+        <aside class="preview-column">
+          <article id="welcomeCard" class="card welcome-card">
+            <div class="bead-flower" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <h2>第一次做也没问题</h2>
+            <p>上传图片后，使用推荐设置就能直接生成。颜色匹配、格子整理和编号都会自动完成。</p>
+            <ul><li><span>1</span> 上传并调整图片</li><li><span>2</span> 选择尺寸和颜色</li><li><span>3</span> 保存图纸开始制作</li></ul>
+          </article>
+          <article id="sourceCard" class="card source-card" hidden>
+            <div class="card-title-row"><div><span class="eyebrow">图片预览</span><h2>这张图片会变成拼豆图</h2></div><span id="cropBadge" class="mini-badge" hidden>已裁剪</span></div>
+            <div class="source-frame"><canvas id="sourcePreview" aria-label="编辑后的图片预览"></canvas></div>
+            <p>建议保留清晰的主体，复杂背景会自动简化成拼豆色块。</p>
+          </article>
+        </aside>
+      </section>
+
+      <section id="progressSection" class="progress-card" hidden aria-live="polite">
+        <div class="progress-beads" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <strong id="progressLabel">正在分析图片……</strong>
+        <div class="progress-track"><i id="progressFill"></i></div>
+      </section>
+
+      <section id="resultSection" class="result-section" hidden>
+        <div class="result-heading"><span class="success-sticker">✓</span><div><span class="eyebrow">图纸完成啦</span><h2>你的拼豆图纸</h2><p>可以先看整体效果，再切换制作图查看编号</p></div></div>
+        <div class="mode-switch" role="tablist" aria-label="图纸模式">
+          <button class="active" data-mode="effect" role="tab" aria-selected="true">效果图</button>
+          <button data-mode="pattern" role="tab" aria-selected="false">制作图</button>
+        </div>
+        <div class="preview-shell">
+          <div id="resultStage" class="result-stage">
+            <canvas id="resultCanvas" aria-label="拼豆图纸预览"></canvas>
+            <button id="fullscreenButton" class="fullscreen-button" aria-label="全屏查看">⛶ 全屏</button>
+          </div>
+          <p class="gesture-hint">单指拖动 · 双指缩放 · 双击放大或恢复</p>
+        </div>
+
+        <article class="card stats-card">
+          <div class="stats-title"><div><span class="eyebrow">本次图纸</span><h2>用豆清单</h2></div><span id="actualColorBadge" class="actual-color-badge"></span></div>
+          <div class="summary-grid">
+            <div><span>总豆数</span><strong id="summaryTotal">0颗</strong></div>
+            <div><span>实际使用</span><strong id="summaryColors">0种颜色</strong></div>
+            <div><span>成品尺寸</span><strong id="summaryPhysical">约0cm × 0cm</strong></div>
+          </div>
+          <div id="colorList" class="color-list"></div>
+          <div class="list-actions"><button id="toggleColors" class="soft-button" hidden>展开全部</button><button id="copyColors" class="soft-button">复制用豆清单</button></div>
+        </article>
+
+        <div class="save-actions" aria-label="保存图纸">
+          <button id="saveEffect" class="secondary-save"><span>▧</span>保存效果图</button>
+          <button id="savePattern" class="primary-button"><span>⇩</span>保存制作图</button>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="cropDialog" class="crop-dialog">
+      <div class="crop-header"><div><span class="eyebrow">调整画面</span><h2>裁剪图片</h2></div><button id="cancelCrop" class="icon-close" aria-label="取消裁剪">×</button></div>
+      <div class="crop-workspace"><img id="cropImage" alt="待裁剪图片" /></div>
+      <div class="crop-ratios" aria-label="裁剪比例"><button class="active" data-ratio="free">自由</button><button data-ratio="square">正方形</button><button data-ratio="portrait">竖版</button><button data-ratio="landscape">横版</button><button data-ratio="pattern">图纸比例</button></div>
+      <div class="crop-footer"><p>拖动图片或裁剪框，双指可以缩放</p><button id="confirmCrop" class="primary-button">完成裁剪</button></div>
+    </dialog>
+
+    <dialog id="customSizeDialog" class="simple-dialog">
+      <button class="icon-close" data-close-dialog aria-label="关闭">×</button><span class="eyebrow">自定义图纸</span><h2>输入格子数量</h2>
+      <div class="custom-inputs"><label>宽度<input id="customWidth" type="number" min="10" max="200" value="60" inputmode="numeric" /></label><span>×</span><label>高度<input id="customHeight" type="number" min="10" max="300" value="90" inputmode="numeric" /></label></div>
+      <p id="customTotal">总计 5,400颗</p><button id="confirmCustomSize" class="primary-button">使用这个尺寸</button>
+    </dialog>
+
+    <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
