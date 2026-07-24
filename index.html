@@ -113,7 +113,7 @@
             <canvas id="resultCanvas" aria-label="拼豆图纸预览"></canvas>
             <button id="fullscreenButton" class="fullscreen-button" aria-label="全屏查看">⛶ 全屏</button>
           </div>
-          <p class="gesture-hint">制作图会自动放大显示色号 · 单指拖动 · 双指缩放</p>
+          <p class="gesture-hint">轻点制作图的小格子可换色 · 单指拖动 · 双指缩放</p>
         </div>
 
         <article class="card stats-card">
@@ -155,10 +155,10 @@
     <dialog id="replaceColorDialog" class="replace-dialog">
       <button id="closeReplaceColor" class="icon-close" aria-label="关闭替换颜色">×</button>
       <span class="eyebrow">手动调整图纸</span>
-      <h2>替换颜色</h2>
+      <h2 id="replaceDialogTitle">替换颜色</h2>
       <div class="replace-current">
         <i id="replaceCurrentSwatch"></i>
-        <div><span>当前选中的颜色</span><strong id="replaceCurrentCode"></strong><small id="replaceCurrentMeta"></small></div>
+        <div><span id="replaceCurrentLabel">当前选中的颜色</span><strong id="replaceCurrentCode"></strong><small id="replaceCurrentMeta"></small></div>
       </div>
       <label class="replace-search">
         <span>从完整221色色卡中选择</span>

@@ -16,7 +16,7 @@ import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
 import { calculateStatistics, statisticsTotal } from './pattern/statistics.js';
 import { createWhiteBackgroundMask } from './pattern/backgroundMask.js';
-import { replacePatternColor } from './pattern/colorReplacement.js';
+import { replacePatternCell, replacePatternColor } from './pattern/colorReplacement.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
 import { exportEffectPng, exportPatternPng } from './export/pngExporter.js';
 import { notify } from './ui/notifications.js';
@@ -31,7 +31,13 @@ let generationVersion = 0;
 let showAllColors = false;
 let replacementSourceIndex = null;
 let replacementTargetIndex = null;
-const renderer = new ResultCanvasRenderer($('#resultCanvas'), $('#resultStage'), () => state);
+let replacementCell = null;
+const renderer = new ResultCanvasRenderer(
+  $('#resultCanvas'),
+  $('#resultStage'),
+  () => state,
+  (cell) => openReplaceCellDialog(cell),
+);
 
 function formatBytes(bytes) {
   return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
@@ -341,9 +347,34 @@ function openReplaceColorDialog() {
 
   replacementSourceIndex = source.index;
   replacementTargetIndex = null;
+  replacementCell = null;
+  $('#replaceDialogTitle').textContent = '替换整种颜色';
+  $('#replaceCurrentLabel').textContent = '当前选中的颜色';
+  $('#confirmReplaceColor').textContent = '确认替换全部同色格子';
   $('#replaceCurrentSwatch').style.backgroundColor = source.hex;
   $('#replaceCurrentCode').textContent = source.code;
   $('#replaceCurrentMeta').textContent = `${source.name} · 当前共 ${number.format(source.count)}颗`;
+  $('#replacementSearch').value = '';
+  updateReplacementTarget();
+  renderReplacementPalette();
+  $('#replacementPalette').scrollTop = 0;
+  $('#replaceColorDialog').showModal();
+}
+
+function openReplaceCellDialog(cell) {
+  if (state.previewMode !== 'pattern' || !state.currentPattern) return;
+  const source = state.palette[cell.colorIndex];
+  if (!source) return;
+
+  replacementSourceIndex = source.index;
+  replacementTargetIndex = null;
+  replacementCell = cell;
+  $('#replaceDialogTitle').textContent = '替换这一颗豆';
+  $('#replaceCurrentLabel').textContent = `第 ${cell.x + 1} 列 · 第 ${cell.y + 1} 行`;
+  $('#confirmReplaceColor').textContent = '确认只替换这一格';
+  $('#replaceCurrentSwatch').style.backgroundColor = source.hex;
+  $('#replaceCurrentCode').textContent = source.code;
+  $('#replaceCurrentMeta').textContent = `${source.name} · 只修改当前小格子`;
   $('#replacementSearch').value = '';
   updateReplacementTarget();
   renderReplacementPalette();
@@ -356,8 +387,11 @@ function applyColorReplacement() {
   const target = state.palette[replacementTargetIndex];
   if (!source || !target || source.index === target.index) return notify('请选择一种不同的替换颜色', 'error');
 
-  const replaced = replacePatternColor(state.currentPattern, source.index, target.index);
-  if (!replaced) return notify('当前图纸中没有找到需要替换的颜色', 'error');
+  const cellReplacement = Boolean(replacementCell);
+  const replaced = cellReplacement
+    ? Number(replacePatternCell(state.currentPattern, replacementCell.position, target.index))
+    : replacePatternColor(state.currentPattern, source.index, target.index);
+  if (!replaced) return notify('当前格子的颜色没有发生变化', 'error');
 
   state.currentPattern.backgroundMask = createWhiteBackgroundMask(
     state.currentPattern,
@@ -368,12 +402,17 @@ function applyColorReplacement() {
   if (statisticsTotal(state.statistics) !== state.currentPattern.width * state.currentPattern.height) {
     return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
   }
-  state.highlightedCode = target.code;
+  state.highlightedCode = cellReplacement ? null : target.code;
   showAllColors = state.statistics.length <= 8 ? false : showAllColors;
   renderStatistics();
   renderer.rebuild();
   $('#replaceColorDialog').close();
-  notify(`已将 ${source.code} 替换为 ${target.code}，共 ${number.format(replaced)}格`, 'success');
+  notify(
+    cellReplacement
+      ? `第 ${replacementCell.x + 1} 列、第 ${replacementCell.y + 1} 行已换成 ${target.code}`
+      : `已将 ${source.code} 替换为 ${target.code}，共 ${number.format(replaced)}格`,
+    'success',
+  );
 }
 
 function bindUpload() {

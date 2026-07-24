@@ -19,3 +19,18 @@ export function replacePatternColor(pattern, fromIndex, toIndex) {
   }
   return replaced;
 }
+
+export function replacePatternCell(pattern, position, toIndex) {
+  if (!pattern?.indices
+    || !Number.isInteger(position)
+    || position < 0
+    || position >= pattern.indices.length
+    || !Number.isInteger(toIndex)
+    || toIndex < 0
+    || toIndex > 255
+    || pattern.indices[position] === toIndex) {
+    return false;
+  }
+  pattern.indices[position] = toIndex;
+  return true;
+}

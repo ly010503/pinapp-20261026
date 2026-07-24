@@ -1,12 +1,14 @@
-import { drawEffect, drawPatternSheet } from './patternPainter.js';
+import { drawEffect, drawPatternSheet, getSheetLayout } from './patternPainter.js';
+import { hitTestPatternCell } from './hitTest.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export class ResultCanvasRenderer {
-  constructor(canvas, stage, getState) {
+  constructor(canvas, stage, getState, onCellTap = null) {
     this.canvas = canvas; this.stage = stage; this.getState = getState;
     this.ctx = canvas.getContext('2d'); this.documentCanvas = document.createElement('canvas');
     this.pointers = new Map(); this.dragOrigin = null; this.pinchOrigin = null;
+    this.onCellTap = onCellTap; this.tapCandidate = null; this.lastTap = null; this.tapTimer = null;
     this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(stage);
     this.bind();
   }
@@ -57,17 +59,63 @@ export class ResultCanvasRenderer {
     this.ctx.drawImage(this.documentCanvas, x, y, drawW, drawH); this.ctx.restore();
   }
 
+  hitTestCell(clientX, clientY) {
+    const state = this.getState(), pattern = state.currentPattern;
+    if (!pattern || state.previewMode !== 'pattern' || !this.documentCanvas.width) return null;
+    const cell = pattern.width <= 30 ? 22 : pattern.width <= 40 ? 20 : pattern.width <= 60 ? 18 : 16;
+    const layout = getSheetLayout(pattern, state.statistics, cell);
+    const rect = this.stage.getBoundingClientRect();
+    const scale = this.getFitScale() * state.viewport.zoom;
+    const drawW = this.documentCanvas.width * scale, drawH = this.documentCanvas.height * scale;
+    const drawX = (rect.width - drawW) / 2 + state.viewport.x;
+    const drawY = (rect.height - drawH) / 2 + state.viewport.y;
+    const documentX = (clientX - rect.left - drawX) / scale;
+    const documentY = (clientY - rect.top - drawY) / scale;
+    return hitTestPatternCell(documentX, documentY, pattern, layout, cell);
+  }
+
+  queueTap(clientX, clientY) {
+    const now = Date.now();
+    if (this.lastTap
+      && now - this.lastTap.time < 300
+      && Math.hypot(clientX - this.lastTap.x, clientY - this.lastTap.y) < 24) {
+      clearTimeout(this.tapTimer);
+      this.tapTimer = null;
+      this.lastTap = null;
+      const viewport = this.getState().viewport;
+      if (viewport.zoom > 1.05) this.fit();
+      else this.zoomAt(2, clientX, clientY);
+      return;
+    }
+    this.lastTap = { time: now, x: clientX, y: clientY };
+    clearTimeout(this.tapTimer);
+    this.tapTimer = setTimeout(() => {
+      const cell = this.hitTestCell(clientX, clientY);
+      this.lastTap = null;
+      this.tapTimer = null;
+      if (cell) this.onCellTap?.(cell);
+    }, 300);
+  }
+
   bind() {
     this.stage.addEventListener('wheel', (event) => { event.preventDefault(); this.zoomAt(event.deltaY < 0 ? 1.12 : 0.89, event.clientX, event.clientY); }, { passive: false });
     this.stage.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('button')) return;
       this.stage.setPointerCapture(event.pointerId); this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       const viewport = this.getState().viewport;
-      if (this.pointers.size === 1) this.dragOrigin = { x: event.clientX, y: event.clientY, vx: viewport.x, vy: viewport.y };
-      if (this.pointers.size === 2) this.startPinch();
+      if (this.pointers.size === 1) {
+        this.dragOrigin = { x: event.clientX, y: event.clientY, vx: viewport.x, vy: viewport.y };
+        this.tapCandidate = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+      }
+      if (this.pointers.size === 2) { this.tapCandidate = null; this.startPinch(); }
     });
     this.stage.addEventListener('pointermove', (event) => {
       if (!this.pointers.has(event.pointerId)) return;
       this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (this.tapCandidate?.pointerId === event.pointerId
+        && Math.hypot(event.clientX - this.tapCandidate.x, event.clientY - this.tapCandidate.y) > 8) {
+        this.tapCandidate.moved = true;
+      }
       const viewport = this.getState().viewport;
       if (this.pointers.size === 1 && this.dragOrigin) { viewport.x = this.dragOrigin.vx + event.clientX - this.dragOrigin.x; viewport.y = this.dragOrigin.vy + event.clientY - this.dragOrigin.y; this.draw(); }
       if (this.pointers.size === 2 && this.pinchOrigin) {
@@ -75,9 +123,23 @@ export class ResultCanvasRenderer {
         viewport.zoom = clamp(this.pinchOrigin.zoom * distance / this.pinchOrigin.distance, 0.5, 8); this.draw();
       }
     });
-    const end = (event) => { this.pointers.delete(event.pointerId); if (this.pointers.size < 2) this.pinchOrigin = null; if (this.pointers.size === 1) { const point = [...this.pointers.values()][0], v = this.getState().viewport; this.dragOrigin = { x: point.x, y: point.y, vx: v.x, vy: v.y }; } };
-    this.stage.addEventListener('pointerup', end); this.stage.addEventListener('pointercancel', end);
-    this.stage.addEventListener('dblclick', (event) => { const viewport = this.getState().viewport; if (viewport.zoom > 1.05) this.fit(); else this.zoomAt(2, event.clientX, event.clientY); });
+    const end = (event, cancelled = false) => {
+      const shouldTap = !cancelled
+        && this.pointers.size === 1
+        && this.tapCandidate?.pointerId === event.pointerId
+        && !this.tapCandidate.moved;
+      this.pointers.delete(event.pointerId);
+      if (shouldTap) this.queueTap(event.clientX, event.clientY);
+      if (this.tapCandidate?.pointerId === event.pointerId) this.tapCandidate = null;
+      if (this.pointers.size < 2) this.pinchOrigin = null;
+      if (this.pointers.size === 1) {
+        const point = [...this.pointers.values()][0], v = this.getState().viewport;
+        this.dragOrigin = { x: point.x, y: point.y, vx: v.x, vy: v.y };
+      }
+    };
+    this.stage.addEventListener('pointerup', (event) => end(event));
+    this.stage.addEventListener('pointercancel', (event) => end(event, true));
+    this.stage.addEventListener('dblclick', (event) => event.preventDefault());
   }
 
   startPinch() { const [a, b] = [...this.pointers.values()]; this.pinchOrigin = { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), zoom: this.getState().viewport.zoom }; }
