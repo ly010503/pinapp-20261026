@@ -10,6 +10,7 @@ import {
 } from './state/config.js';
 import { store } from './state/store.js';
 import { preparePalette } from './color/colorMatcher.js';
+import { sortPaletteByRecent, updateRecentColorCodes } from './color/recentPalette.js';
 import { createAdjustedCanvas, getGridPixels } from './image/imageProcessor.js';
 import { getColorStyleAdjustments } from './image/colorStyle.js';
 import { CropperController } from './image/cropperController.js';
@@ -24,6 +25,7 @@ import { notify } from './ui/notifications.js';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const number = new Intl.NumberFormat('zh-CN');
+const RECENT_COLORS_KEY = 'perler-recent-replacement-colors';
 const state = store.get();
 state.palette = preparePalette(paletteJson);
 
@@ -32,6 +34,7 @@ let showAllColors = false;
 let replacementSourceIndex = null;
 let replacementTargetIndex = null;
 let replacementCell = null;
+let recentReplacementCodes = loadRecentReplacementCodes();
 const renderer = new ResultCanvasRenderer(
   $('#resultCanvas'),
   $('#resultStage'),
@@ -41,6 +44,24 @@ const renderer = new ResultCanvasRenderer(
 
 function formatBytes(bytes) {
   return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function loadRecentReplacementCodes() {
+  try {
+    const value = JSON.parse(localStorage.getItem(RECENT_COLORS_KEY) || '[]');
+    return Array.isArray(value) ? value.filter((code) => typeof code === 'string').slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberReplacementColor(code) {
+  recentReplacementCodes = updateRecentColorCodes(recentReplacementCodes, code, 12);
+  try {
+    localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify(recentReplacementCodes));
+  } catch {
+    // Safari隐私模式可能禁用本地存储；当前页面内仍保留最近颜色。
+  }
 }
 
 function makeButton(className, attributes = {}) {
@@ -309,22 +330,23 @@ function renderReplacementPalette() {
   const container = $('#replacementPalette');
   const query = $('#replacementSearch').value.trim().toLocaleUpperCase('zh-CN');
   const fragment = document.createDocumentFragment();
-  const colors = state.palette.filter((color) => (
+  const colors = sortPaletteByRecent(state.palette.filter((color) => (
     !query
     || color.code.toLocaleUpperCase('zh-CN').includes(query)
     || color.name.toLocaleUpperCase('zh-CN').includes(query)
-  ));
+  )), recentReplacementCodes);
 
   colors.forEach((color) => {
     const button = makeButton('palette-swatch', {
       type: 'button',
       role: 'radio',
       'aria-checked': String(color.index === replacementTargetIndex),
-      'aria-label': `${color.code} ${color.name}`,
+      'aria-label': `${recentReplacementCodes.includes(color.code) ? '最近使用 ' : ''}${color.code} ${color.name}`,
     });
     button.dataset.index = color.index;
     button.classList.toggle('active', color.index === replacementTargetIndex);
     button.classList.toggle('current', color.index === replacementSourceIndex);
+    button.classList.toggle('recent', recentReplacementCodes.includes(color.code));
     const patch = document.createElement('i'); patch.style.backgroundColor = color.hex;
     const code = document.createElement('strong'); code.textContent = color.code;
     const name = document.createElement('small'); name.textContent = color.name;
@@ -403,6 +425,7 @@ function applyColorReplacement() {
     return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
   }
   state.highlightedCode = cellReplacement ? null : target.code;
+  rememberReplacementColor(target.code);
   showAllColors = state.statistics.length <= 8 ? false : showAllColors;
   renderStatistics();
   renderer.rebuild();
