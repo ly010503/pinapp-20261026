@@ -10,6 +10,7 @@ import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
 import { calculateStatistics, statisticsTotal } from './pattern/statistics.js';
 import { createWhiteBackgroundMask } from './pattern/backgroundMask.js';
+import { replacePatternColor } from './pattern/colorReplacement.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
 import { exportEffectPng, exportPatternPng } from './export/pngExporter.js';
 import { notify } from './ui/notifications.js';
@@ -22,6 +23,8 @@ state.palette = preparePalette(paletteJson);
 
 let generationVersion = 0;
 let showAllColors = false;
+let replacementSourceIndex = null;
+let replacementTargetIndex = null;
 const renderer = new ResultCanvasRenderer($('#resultCanvas'), $('#resultStage'), () => state);
 
 function formatBytes(bytes) {
@@ -184,6 +187,7 @@ function renderColorList() {
   });
   $('#toggleColors').hidden = state.statistics.length <= 8;
   $('#toggleColors').textContent = showAllColors ? '收起' : `展开全部（${state.statistics.length}色）`;
+  $('#replaceSelectedColor').disabled = !state.highlightedCode;
 }
 
 function renderStatistics() {
@@ -280,6 +284,85 @@ async function copyList() {
   } catch { notify('复制失败，请检查浏览器权限', 'error'); }
 }
 
+function updateReplacementTarget() {
+  const target = state.palette[replacementTargetIndex];
+  $('#replaceTargetText').textContent = target ? `${target.code} · ${target.name}` : '请在下方选择一种颜色';
+  $('#confirmReplaceColor').disabled = !target || replacementTargetIndex === replacementSourceIndex;
+}
+
+function renderReplacementPalette() {
+  const container = $('#replacementPalette');
+  const query = $('#replacementSearch').value.trim().toLocaleUpperCase('zh-CN');
+  const fragment = document.createDocumentFragment();
+  const colors = state.palette.filter((color) => (
+    !query
+    || color.code.toLocaleUpperCase('zh-CN').includes(query)
+    || color.name.toLocaleUpperCase('zh-CN').includes(query)
+  ));
+
+  colors.forEach((color) => {
+    const button = makeButton('palette-swatch', {
+      type: 'button',
+      role: 'radio',
+      'aria-checked': String(color.index === replacementTargetIndex),
+      'aria-label': `${color.code} ${color.name}`,
+    });
+    button.dataset.index = color.index;
+    button.classList.toggle('active', color.index === replacementTargetIndex);
+    button.classList.toggle('current', color.index === replacementSourceIndex);
+    const patch = document.createElement('i'); patch.style.backgroundColor = color.hex;
+    const code = document.createElement('strong'); code.textContent = color.code;
+    const name = document.createElement('small'); name.textContent = color.name;
+    button.append(patch, code, name);
+    fragment.append(button);
+  });
+
+  container.replaceChildren(fragment);
+  if (!colors.length) {
+    const empty = document.createElement('p');
+    empty.className = 'palette-empty';
+    empty.textContent = '没有找到这个色号，换个关键词试试';
+    container.append(empty);
+  }
+}
+
+function openReplaceColorDialog() {
+  const source = state.statistics.find((item) => item.code === state.highlightedCode);
+  if (!source) return notify('请先在用豆清单中选择一种颜色', 'error');
+
+  replacementSourceIndex = source.index;
+  replacementTargetIndex = null;
+  $('#replaceCurrentSwatch').style.backgroundColor = source.hex;
+  $('#replaceCurrentCode').textContent = source.code;
+  $('#replaceCurrentMeta').textContent = `${source.name} · 当前共 ${number.format(source.count)}颗`;
+  $('#replacementSearch').value = '';
+  updateReplacementTarget();
+  renderReplacementPalette();
+  $('#replacementPalette').scrollTop = 0;
+  $('#replaceColorDialog').showModal();
+}
+
+function applyColorReplacement() {
+  const source = state.palette[replacementSourceIndex];
+  const target = state.palette[replacementTargetIndex];
+  if (!source || !target || source.index === target.index) return notify('请选择一种不同的替换颜色', 'error');
+
+  const replaced = replacePatternColor(state.currentPattern, source.index, target.index);
+  if (!replaced) return notify('当前图纸中没有找到需要替换的颜色', 'error');
+
+  state.currentPattern.backgroundMask = createWhiteBackgroundMask(state.currentPattern, state.palette);
+  state.statistics = calculateStatistics(state.currentPattern.indices, state.palette);
+  if (statisticsTotal(state.statistics) !== state.currentPattern.width * state.currentPattern.height) {
+    return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
+  }
+  state.highlightedCode = target.code;
+  showAllColors = state.statistics.length <= 8 ? false : showAllColors;
+  renderStatistics();
+  renderer.rebuild();
+  $('#replaceColorDialog').close();
+  notify(`已将 ${source.code} 替换为 ${target.code}，共 ${number.format(replaced)}格`, 'success');
+}
+
 function bindUpload() {
   const zone = $('#uploadZone'), input = $('#fileInput');
   const open = () => input.click();
@@ -340,6 +423,16 @@ function bindResults() {
   $$('.mode-switch button').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
   $('#toggleColors').addEventListener('click', () => { showAllColors = !showAllColors; renderColorList(); });
   $('#copyColors').addEventListener('click', copyList);
+  $('#replaceSelectedColor').addEventListener('click', openReplaceColorDialog);
+  $('#closeReplaceColor').addEventListener('click', () => $('#replaceColorDialog').close());
+  $('#replacementSearch').addEventListener('input', renderReplacementPalette);
+  $('#replacementPalette').addEventListener('click', (event) => {
+    const button = event.target.closest('.palette-swatch'); if (!button) return;
+    replacementTargetIndex = Number(button.dataset.index);
+    updateReplacementTarget();
+    renderReplacementPalette();
+  });
+  $('#confirmReplaceColor').addEventListener('click', applyColorReplacement);
   $('#colorList').addEventListener('click', (event) => {
     const row = event.target.closest('.color-row'); if (!row) return;
     state.highlightedCode = state.highlightedCode === row.dataset.code ? null : row.dataset.code;
@@ -367,7 +460,11 @@ buildChoices(); bindUpload(); bindChoices(); bindDialogs(); bindResults();
 $$('[data-transform]').forEach((button) => button.addEventListener('click', () => changeTransform(button.dataset.transform)));
 $('#generateButton').addEventListener('click', generate);
 window.addEventListener('resize', () => { if (state.image) drawSourcePreview(); });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && state.highlightedCode) { state.highlightedCode = null; renderColorList(); renderer.rebuild(); } });
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.highlightedCode && !$('#replaceColorDialog').open) {
+    state.highlightedCode = null; renderColorList(); renderer.rebuild();
+  }
+});
 renderer.resize();
 
 if (state.palette.length !== 221) notify('MARD 221 色卡加载不完整，请刷新页面', 'error');

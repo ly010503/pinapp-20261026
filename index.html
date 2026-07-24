@@ -123,8 +123,13 @@
             <div><span>实际使用</span><strong id="summaryColors">0种颜色</strong></div>
             <div><span>成品尺寸</span><strong id="summaryPhysical">约0cm × 0cm</strong></div>
           </div>
+          <p class="replace-hint">点击一种颜色可在图纸中高亮，也可以替换成221色色卡中的任意颜色。</p>
           <div id="colorList" class="color-list"></div>
-          <div class="list-actions"><button id="toggleColors" class="soft-button" hidden>展开全部</button><button id="copyColors" class="soft-button">复制用豆清单</button></div>
+          <div class="list-actions">
+            <button id="replaceSelectedColor" class="replace-selected-button" disabled>替换选中颜色</button>
+            <button id="toggleColors" class="soft-button" hidden>展开全部</button>
+            <button id="copyColors" class="soft-button">复制用豆清单</button>
+          </div>
         </article>
 
         <div class="save-actions" aria-label="保存图纸">
@@ -145,6 +150,28 @@
       <button class="icon-close" data-close-dialog aria-label="关闭">×</button><span class="eyebrow">自定义图纸</span><h2>输入格子数量</h2>
       <div class="custom-inputs"><label>宽度<input id="customWidth" type="number" min="10" max="200" value="60" inputmode="numeric" /></label><span>×</span><label>高度<input id="customHeight" type="number" min="10" max="300" value="90" inputmode="numeric" /></label></div>
       <p id="customTotal">总计 5,400颗</p><button id="confirmCustomSize" class="primary-button">使用这个尺寸</button>
+    </dialog>
+
+    <dialog id="replaceColorDialog" class="replace-dialog">
+      <button id="closeReplaceColor" class="icon-close" aria-label="关闭替换颜色">×</button>
+      <span class="eyebrow">手动调整图纸</span>
+      <h2>替换颜色</h2>
+      <div class="replace-current">
+        <i id="replaceCurrentSwatch"></i>
+        <div><span>当前选中的颜色</span><strong id="replaceCurrentCode"></strong><small id="replaceCurrentMeta"></small></div>
+      </div>
+      <label class="replace-search">
+        <span>从完整221色色卡中选择</span>
+        <input id="replacementSearch" type="search" placeholder="搜索色号或颜色名称，如 C20" autocomplete="off" />
+      </label>
+      <div class="replace-target">
+        <span>准备替换为</span>
+        <strong id="replaceTargetText">请在下方选择一种颜色</strong>
+      </div>
+      <div id="replacementPalette" class="replacement-palette" role="radiogroup" aria-label="221色替换色卡"></div>
+      <div class="replace-dialog-footer">
+        <button id="confirmReplaceColor" class="primary-button" disabled>确认替换</button>
+      </div>
     </dialog>
 
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
