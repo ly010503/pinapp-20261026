@@ -1,5 +1,6 @@
 import { deltaE76, rgbToLab } from '../color/colorSpace.js';
 import { choosePaletteIndices, shouldProtectAccent } from '../pattern/paletteLimit.js';
+import { createOutlineMask, findOutlinePaletteIndex } from '../pattern/outlineProtection.js';
 
 function postProgress(progress, text) { self.postMessage({ type: 'progress', progress, text }); }
 
@@ -38,6 +39,9 @@ self.onmessage = ({ data }) => {
     const { id, width, height, maxColors, reduceIsolated, mergeColors, pixels: buffer } = data;
     const pixels = new Uint8ClampedArray(buffer);
     const palette = data.palette.map((color) => ({ ...color, lab: rgbToLab(...color.rgb) }));
+    const outlineMask = createOutlineMask(pixels, width, height);
+    const outlineIndex = findOutlinePaletteIndex(palette);
+    const hasProtectedOutline = outlineIndex >= 0 && outlineMask.some(Boolean);
     const raw = new Uint8Array(width * height);
     const counts = new Uint32Array(palette.length);
     const matchCache = new Map();
@@ -62,12 +66,21 @@ self.onmessage = ({ data }) => {
       }
       allowed = merged;
     }
+    if (hasProtectedOutline && !allowed.includes(outlineIndex)) {
+      if (allowed.length >= Math.max(1, maxColors)) allowed[allowed.length - 1] = outlineIndex;
+      else allowed.push(outlineIndex);
+    }
     postProgress(68, '正在压缩颜色');
     const remap = new Map();
     for (const index of [...counts.keys()]) if (!allowed.includes(index)) remap.set(index, nearest(palette[index].lab, palette, allowed));
     for (let i = 0; i < raw.length; i += 1) if (remap.has(raw[i])) raw[i] = remap.get(raw[i]);
     postProgress(82, '正在优化图纸');
     const indices = reduceIsolated ? cleanIsolated(raw, width, height, palette) : raw;
+    if (hasProtectedOutline) {
+      for (let i = 0; i < indices.length; i += 1) {
+        if (outlineMask[i]) indices[i] = outlineIndex;
+      }
+    }
     postProgress(94, '正在生成统计');
     self.postMessage({ type: 'result', id, width, height, indices: indices.buffer }, [indices.buffer]);
   } catch (error) {
