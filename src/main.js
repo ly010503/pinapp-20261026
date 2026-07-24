@@ -1,7 +1,13 @@
 import 'cropperjs/dist/cropper.css';
 import './styles/app.css';
 import paletteJson from './data/palettes/mard-221.json';
-import { PATTERN_SIZES, COLOR_OPTIONS, MAX_FILE_BYTES, SUPPORTED_TYPES } from './state/config.js';
+import {
+  PATTERN_SIZES,
+  COLOR_OPTIONS,
+  MAX_FILE_BYTES,
+  SUPPORTED_TYPES,
+  physicalSizeCm,
+} from './state/config.js';
 import { store } from './state/store.js';
 import { preparePalette } from './color/colorMatcher.js';
 import { createAdjustedCanvas, getGridPixels } from './image/imageProcessor.js';
@@ -195,7 +201,9 @@ function renderStatistics() {
   const actual = state.statistics.length;
   $('#summaryTotal').textContent = `${number.format(total)}颗`;
   $('#summaryColors').textContent = `${actual}种颜色`;
-  $('#summaryPhysical').textContent = `约${state.currentPattern.width * 0.5}cm × ${state.currentPattern.height * 0.5}cm`;
+  const physicalWidth = physicalSizeCm(state.currentPattern.width);
+  const physicalHeight = physicalSizeCm(state.currentPattern.height);
+  $('#summaryPhysical').textContent = `约${physicalWidth.toFixed(1)}cm × ${physicalHeight.toFixed(1)}cm`;
   $('#actualColorBadge').textContent = `实际 ${actual} 色`;
   renderColorList();
 }

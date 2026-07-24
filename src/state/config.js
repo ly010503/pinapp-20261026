@@ -13,6 +13,11 @@ export const COLOR_OPTIONS = [
 ];
 
 export const DEFAULT_SIZE = { width: 60, height: 90 };
+export const BEAD_DIAMETER_MM = 2.6;
 export const MAX_FILE_BYTES = 40 * 1024 * 1024;
 export const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const sizeKey = ({ width, height }) => `${width}x${height}`;
+
+export function physicalSizeCm(gridCount) {
+  return gridCount * BEAD_DIAMETER_MM / 10;
+}
