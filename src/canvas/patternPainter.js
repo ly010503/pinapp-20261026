@@ -1,3 +1,5 @@
+import { getPatternPosition } from '../pattern/mirror.js';
+
 const number = new Intl.NumberFormat('zh-CN');
 export const GUIDE_STEP = 5;
 
@@ -78,7 +80,12 @@ export function drawEffect(ctx, pattern, palette, { cell = 10, highlightedCode =
   return { width, height };
 }
 
-export function drawPatternSheet(ctx, pattern, palette, statistics, { cell = 14, highlightedCode = null, title = '我的拼豆制作图' } = {}) {
+export function drawPatternSheet(ctx, pattern, palette, statistics, {
+  cell = 14,
+  highlightedCode = null,
+  title = '我的拼豆制作图',
+  mirrorX = false,
+} = {}) {
   const layout = getSheetLayout(pattern, statistics, cell);
   const { paperWidth, paperHeight, gridX, gridY, gridWidth, gridHeight } = layout;
   ctx.canvas.width = paperWidth; ctx.canvas.height = paperHeight;
@@ -92,7 +99,8 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, { cell = 14,
   ctx.fillText(title, paperWidth - layout.padding, layout.header * 0.45);
 
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
-    const color = palette[pattern.indices[y * pattern.width + x]];
+    const position = getPatternPosition(pattern.width, x, y, mirrorX);
+    const color = palette[pattern.indices[position]];
     ctx.globalAlpha = highlightedCode && color.code !== highlightedCode ? 0.14 : 1;
     ctx.fillStyle = color.hex;
     ctx.fillRect(gridX + x * cell, gridY + y * cell, cell, cell);
@@ -114,7 +122,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, { cell = 14,
   ctx.font = `700 ${Math.max(6, Math.floor(cell * 0.4))}px "Arial Narrow", Arial, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
-    const position = y * pattern.width + x;
+    const position = getPatternPosition(pattern.width, x, y, mirrorX);
     if (pattern.backgroundMask?.[position]) continue;
     const color = palette[pattern.indices[position]];
     const dark = colorLuminance(color.rgb) < 0.36;

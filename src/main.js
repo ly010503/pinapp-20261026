@@ -529,6 +529,10 @@ function bindResults() {
     try { const result = await exportPatternPng(state.currentPattern, state.palette, state.statistics); if (result.reduced) notify(`设备内存有限，已安全导出 ${result.width}×${result.height}px，色号和网格不受影响。`); else notify(`高清制作图已保存（${result.width}×${result.height}px）`, 'success'); }
     catch (error) { notify(error.message || '保存失败，请重试', 'error', 5000); }
   });
+  $('#saveMirroredPattern').addEventListener('click', async () => {
+    try { const result = await exportPatternPng(state.currentPattern, state.palette, state.statistics, { mirrorX: true }); if (result.reduced) notify(`设备内存有限，已安全导出镜像制作图 ${result.width}×${result.height}px，色号和网格不受影响。`); else notify(`高清镜像制作图已保存（${result.width}×${result.height}px）`, 'success'); }
+    catch (error) { notify(error.message || '镜像制作图保存失败，请重试', 'error', 5000); }
+  });
 }
 
 buildChoices(); bindUpload(); bindChoices(); bindDialogs(); bindResults();

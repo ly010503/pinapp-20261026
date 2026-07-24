@@ -72,12 +72,17 @@ export async function exportEffectPng(pattern, palette) {
   return result;
 }
 
-export async function exportPatternPng(pattern, palette, statistics) {
+export async function exportPatternPng(pattern, palette, statistics, { mirrorX = false } = {}) {
   const selection = safeCell(pattern, statistics, 'pattern');
   const result = await renderWithFallback(
-    (ctx, cell) => drawPatternSheet(ctx, pattern, palette, statistics, { cell }),
+    (ctx, cell) => drawPatternSheet(ctx, pattern, palette, statistics, {
+      cell,
+      mirrorX,
+      title: mirrorX ? '我的拼豆制作图（镜像）' : '我的拼豆制作图',
+    }),
     selection,
   );
-  download(result.blob, `拼豆高清制作图-${pattern.width}x${pattern.height}.png`);
+  const kind = mirrorX ? '拼豆高清镜像制作图' : '拼豆高清制作图';
+  download(result.blob, `${kind}-${pattern.width}x${pattern.height}.png`);
   return result;
 }
