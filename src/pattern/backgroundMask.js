@@ -36,13 +36,59 @@ export function createWhiteBackgroundMask(pattern, palette) {
   const dominant = [...edgeCounts.entries()].sort((a, b) => b[1] - a[1])[0];
   if (!dominant) return mask;
   const backgroundRgb = palette[dominant[0]].rgb;
+  const isBackgroundWhite = (position) => {
+    const color = palette[indices[position]];
+    return isWhiteLike(color) && rgbDistance(color.rgb, backgroundRgb) <= 18;
+  };
+
+  // 主体中的白色有时会通过很窄的开口与白色背景相连。
+  // 仅靠四周洪泛会误删这些色号，因此先判断白色格子是否位于主体轮廓内部：
+  // 横向或纵向两侧都有非背景色时，视为主体白色并保留编号。
+  const hasLeftForeground = new Uint8Array(width * height);
+  const hasRightForeground = new Uint8Array(width * height);
+  const hasTopForeground = new Uint8Array(width * height);
+  const hasBottomForeground = new Uint8Array(width * height);
+
+  for (let y = 0; y < height; y += 1) {
+    let seen = false;
+    for (let x = 0; x < width; x += 1) {
+      const position = y * width + x;
+      hasLeftForeground[position] = seen ? 1 : 0;
+      if (!isBackgroundWhite(position)) seen = true;
+    }
+    seen = false;
+    for (let x = width - 1; x >= 0; x -= 1) {
+      const position = y * width + x;
+      hasRightForeground[position] = seen ? 1 : 0;
+      if (!isBackgroundWhite(position)) seen = true;
+    }
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    let seen = false;
+    for (let y = 0; y < height; y += 1) {
+      const position = y * width + x;
+      hasTopForeground[position] = seen ? 1 : 0;
+      if (!isBackgroundWhite(position)) seen = true;
+    }
+    seen = false;
+    for (let y = height - 1; y >= 0; y -= 1) {
+      const position = y * width + x;
+      hasBottomForeground[position] = seen ? 1 : 0;
+      if (!isBackgroundWhite(position)) seen = true;
+    }
+  }
+
+  const isInsideSubject = (position) => (
+    (hasLeftForeground[position] && hasRightForeground[position])
+    || (hasTopForeground[position] && hasBottomForeground[position])
+  );
   const queue = new Uint32Array(width * height);
   let head = 0, tail = 0;
 
   const enqueue = (position) => {
     if (mask[position]) return;
-    const color = palette[indices[position]];
-    if (!isWhiteLike(color) || rgbDistance(color.rgb, backgroundRgb) > 18) return;
+    if (!isBackgroundWhite(position) || isInsideSubject(position)) return;
     mask[position] = 1;
     queue[tail] = position;
     tail += 1;
