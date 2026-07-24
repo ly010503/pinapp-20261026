@@ -45,3 +45,27 @@ test('主体白色与背景通过开口相连时仍保留主体色号', () => {
   assert.equal(mask[4 * width + 4], 0, '主体内部白色即使连到背景也应保留编号');
   assert.equal(mask[1 * width + 4], 1, '主体上方的白色背景仍应隐藏编号');
 });
+
+test('最终都映射为白色时按原图采样区分背景与主体浅色', () => {
+  const width = 7, height = 7;
+  const indices = new Uint8Array(width * height);
+  const sourcePixels = new Uint8ClampedArray(width * height * 4);
+
+  for (let position = 0; position < width * height; position += 1) {
+    const offset = position * 4;
+    sourcePixels.set([255, 255, 255, 255], offset);
+  }
+  for (let y = 2; y <= 5; y += 1) {
+    for (let x = 2; x <= 4; x += 1) {
+      const offset = (y * width + x) * 4;
+      sourcePixels.set([244, 237, 220, 255], offset);
+    }
+  }
+  // 主体中间保留一格纯白高光，依靠周围主体轮廓识别。
+  sourcePixels.set([255, 255, 255, 255], (3 * width + 3) * 4);
+
+  const mask = createWhiteBackgroundMask({ width, height, indices }, palette, sourcePixels);
+  assert.equal(mask[0], 1, '原图中的纯白背景应隐藏编号');
+  assert.equal(mask[4 * width + 3], 0, '映射为白色的主体浅色应显示编号');
+  assert.equal(mask[3 * width + 3], 0, '主体内部纯白高光也应显示编号');
+});

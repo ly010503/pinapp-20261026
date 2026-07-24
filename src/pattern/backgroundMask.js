@@ -14,7 +14,7 @@ function rgbDistance(a, b) {
  * 只标记从图纸四周连通的白色区域。
  * 被轮廓包围的主体白色即使色号相同，也不会进入背景遮罩。
  */
-export function createWhiteBackgroundMask(pattern, palette) {
+export function createWhiteBackgroundMask(pattern, palette, sourcePixels = pattern.sourcePixels) {
   const { width, height, indices } = pattern;
   const mask = new Uint8Array(width * height);
   if (!width || !height || !indices?.length) return mask;
@@ -36,9 +36,45 @@ export function createWhiteBackgroundMask(pattern, palette) {
   const dominant = [...edgeCounts.entries()].sort((a, b) => b[1] - a[1])[0];
   if (!dominant) return mask;
   const backgroundRgb = palette[dominant[0]].rgb;
+  const hasSourcePixels = sourcePixels?.length >= width * height * 4;
+  let sourceBackgroundRgb = null;
+
+  if (hasSourcePixels) {
+    const channels = [[], [], []];
+    const collectSource = (position) => {
+      if (!isWhiteLike(palette[indices[position]])) return;
+      const offset = position * 4;
+      channels[0].push(sourcePixels[offset]);
+      channels[1].push(sourcePixels[offset + 1]);
+      channels[2].push(sourcePixels[offset + 2]);
+    };
+    for (let x = 0; x < width; x += 1) {
+      collectSource(x);
+      if (height > 1) collectSource((height - 1) * width + x);
+    }
+    for (let y = 1; y < height - 1; y += 1) {
+      collectSource(y * width);
+      if (width > 1) collectSource(y * width + width - 1);
+    }
+    if (channels[0].length) {
+      sourceBackgroundRgb = channels.map((values) => {
+        values.sort((a, b) => a - b);
+        return values[Math.floor(values.length / 2)];
+      });
+    }
+  }
+
+  const sourceLooksLikeBackground = (position) => {
+    if (!sourceBackgroundRgb) return true;
+    const offset = position * 4;
+    const sourceRgb = [sourcePixels[offset], sourcePixels[offset + 1], sourcePixels[offset + 2]];
+    return rgbDistance(sourceRgb, sourceBackgroundRgb) <= 14;
+  };
   const isBackgroundWhite = (position) => {
     const color = palette[indices[position]];
-    return isWhiteLike(color) && rgbDistance(color.rgb, backgroundRgb) <= 18;
+    return isWhiteLike(color)
+      && rgbDistance(color.rgb, backgroundRgb) <= 18
+      && sourceLooksLikeBackground(position);
   };
 
   // 主体中的白色有时会通过很窄的开口与白色背景相连。

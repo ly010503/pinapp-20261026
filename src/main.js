@@ -222,7 +222,8 @@ async function generate() {
       onProgress: updateProgress,
     });
     if (version !== generationVersion) return;
-    pattern.backgroundMask = createWhiteBackgroundMask(pattern, state.palette);
+    pattern.sourcePixels = pixels;
+    pattern.backgroundMask = createWhiteBackgroundMask(pattern, state.palette, pixels);
     const statistics = calculateStatistics(pattern.indices, state.palette);
     if (statisticsTotal(statistics) !== width * height) throw new Error('颜色统计校验失败，请重新生成');
     Object.assign(state, { currentPattern: pattern, statistics, highlightedCode: null, dirty: false, previewMode: 'effect' });
@@ -350,7 +351,11 @@ function applyColorReplacement() {
   const replaced = replacePatternColor(state.currentPattern, source.index, target.index);
   if (!replaced) return notify('当前图纸中没有找到需要替换的颜色', 'error');
 
-  state.currentPattern.backgroundMask = createWhiteBackgroundMask(state.currentPattern, state.palette);
+  state.currentPattern.backgroundMask = createWhiteBackgroundMask(
+    state.currentPattern,
+    state.palette,
+    state.currentPattern.sourcePixels,
+  );
   state.statistics = calculateStatistics(state.currentPattern.indices, state.palette);
   if (statisticsTotal(state.statistics) !== state.currentPattern.width * state.currentPattern.height) {
     return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
