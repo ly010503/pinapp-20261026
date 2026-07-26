@@ -1,8 +1,10 @@
 export const PATTERN_SIZES = [
-  { id: 'mini', label: '迷你', width: 30, height: 30, description: '适合图标和简单图案' },
-  { id: 'small', label: '小号', width: 40, height: 60, description: '适合简单头像' },
-  { id: 'medium', label: '中号', width: 60, height: 90, description: '适合人物和宠物', recommended: true },
-  { id: 'large', label: '大号', width: 80, height: 120, description: '细节更加丰富' },
+  { id: 'square-50', label: '方形 50', width: 50, height: 50, description: '适合头像和简单图案' },
+  { id: 'square-64', label: '方形 64', width: 64, height: 64, description: '常用方形尺寸' },
+  { id: 'square-70', label: '方形 70', width: 70, height: 70, description: '方形细节更丰富' },
+  { id: 'square-90', label: '方形 90', width: 90, height: 90, description: '适合复杂方形图案' },
+  { id: 'square-104', label: '方形 104', width: 104, height: 104, description: '大型精细方形图纸' },
+  { id: 'portrait-70-104', label: '竖版 70×104', width: 70, height: 104, description: '适合人物和宠物', recommended: true },
 ];
 
 export const COLOR_OPTIONS = [
@@ -12,7 +14,7 @@ export const COLOR_OPTIONS = [
   { value: 221, label: '最多 221 色', description: '开放完整标准色库' },
 ];
 
-export const DEFAULT_SIZE = { width: 60, height: 90 };
+export const DEFAULT_SIZE = { width: 70, height: 104 };
 export const BEAD_DIAMETER_MM = 2.6;
 export const MAX_FILE_BYTES = 40 * 1024 * 1024;
 export const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];

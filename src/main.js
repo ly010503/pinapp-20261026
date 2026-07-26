@@ -73,7 +73,7 @@ function makeButton(className, attributes = {}) {
 
 function buildChoices() {
   PATTERN_SIZES.forEach((size) => {
-    const button = makeButton('size-card', { role: 'radio', 'aria-checked': String(size.id === 'medium') });
+    const button = makeButton('size-card', { role: 'radio', 'aria-checked': String(Boolean(size.recommended)) });
     button.dataset.width = size.width;
     button.dataset.height = size.height;
     button.dataset.id = size.id;
@@ -85,7 +85,7 @@ function buildChoices() {
     const total = document.createElement('span'); total.textContent = `总计 ${number.format(size.width * size.height)}颗`;
     const description = document.createElement('small'); description.textContent = size.description;
     button.append(header, dimensions, total, description);
-    button.classList.toggle('active', size.id === 'medium');
+    button.classList.toggle('active', Boolean(size.recommended));
     $('#sizeCards').append(button);
   });
   const custom = makeButton('size-card custom-card', { role: 'radio', 'aria-checked': 'false' });
