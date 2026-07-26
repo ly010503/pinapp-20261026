@@ -1,4 +1,8 @@
-import { drawEffect, drawPatternSheet } from '../canvas/patternPainter.js';
+import {
+  COPYRIGHT_NOTICE,
+  drawEffect,
+  drawPatternSheet,
+} from '../canvas/patternPainter.js';
 
 function download(blob, name) {
   const url = URL.createObjectURL(blob);
@@ -65,7 +69,11 @@ async function renderWithFallback(draw, selection) {
 export async function exportEffectPng(pattern, palette) {
   const selection = safeCell(pattern, [], 'effect');
   const result = await renderWithFallback(
-    (ctx, cell) => drawEffect(ctx, pattern, palette, { cell, background: '#FFFDF8' }),
+    (ctx, cell) => drawEffect(ctx, pattern, palette, {
+      cell,
+      background: '#FFFDF8',
+      showWatermark: true,
+    }),
     selection,
   );
   download(result.blob, `拼豆高清效果图-${pattern.width}x${pattern.height}.png`);
@@ -78,7 +86,7 @@ export async function exportPatternPng(pattern, palette, statistics, { mirrorX =
     (ctx, cell) => drawPatternSheet(ctx, pattern, palette, statistics, {
       cell,
       mirrorX,
-      title: mirrorX ? '我的拼豆制作图（镜像）' : '我的拼豆制作图',
+      title: mirrorX ? `镜像制作图 · ${COPYRIGHT_NOTICE}` : COPYRIGHT_NOTICE,
     }),
     selection,
   );

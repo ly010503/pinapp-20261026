@@ -2,6 +2,8 @@ import { getPatternPosition } from '../pattern/mirror.js';
 
 const number = new Intl.NumberFormat('zh-CN');
 export const GUIDE_STEP = 5;
+export const CREATOR_WATERMARK = '@小石豆图';
+export const COPYRIGHT_NOTICE = '原创作品 · 禁止盗用';
 
 export function getCoordinateValues(length, step = GUIDE_STEP) {
   const values = [1];
@@ -60,10 +62,16 @@ export function getSheetLayout(pattern, statistics, cell) {
   return { padding, coordinate, header, gridWidth, gridHeight, paperWidth, paperHeight, gridX, gridY, legendY, cardGap, cardWidth, cardHeight, columns, statsHeight };
 }
 
-export function drawEffect(ctx, pattern, palette, { cell = 10, highlightedCode = null, background = '#FFFDF8' } = {}) {
+export function drawEffect(ctx, pattern, palette, {
+  cell = 10,
+  highlightedCode = null,
+  background = '#FFFDF8',
+  showWatermark = false,
+} = {}) {
   const padding = Math.max(18, cell * 2);
+  const footer = showWatermark ? Math.max(42, Math.round(cell * 2.4)) : 0;
   const width = pattern.width * cell + padding * 2;
-  const height = pattern.height * cell + padding * 2;
+  const height = pattern.height * cell + padding * 2 + footer;
   ctx.canvas.width = width; ctx.canvas.height = height;
   ctx.fillStyle = background; ctx.fillRect(0, 0, width, height);
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
@@ -77,13 +85,20 @@ export function drawEffect(ctx, pattern, palette, { cell = 10, highlightedCode =
   for (let x = 0; x <= pattern.width; x += 1) { const px = padding + x * cell + 0.5; ctx.moveTo(px, padding); ctx.lineTo(px, padding + pattern.height * cell); }
   for (let y = 0; y <= pattern.height; y += 1) { const py = padding + y * cell + 0.5; ctx.moveTo(padding, py); ctx.lineTo(padding + pattern.width * cell, py); }
   ctx.stroke();
+  if (showWatermark) {
+    ctx.fillStyle = '#6F6878';
+    ctx.font = `700 ${Math.max(14, Math.round(cell * 0.55))}px "PingFang SC", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${CREATOR_WATERMARK}　${COPYRIGHT_NOTICE}`, width / 2, height - footer / 2);
+  }
   return { width, height };
 }
 
 export function drawPatternSheet(ctx, pattern, palette, statistics, {
   cell = 14,
   highlightedCode = null,
-  title = '我的拼豆制作图',
+  title = COPYRIGHT_NOTICE,
   mirrorX = false,
 } = {}) {
   const layout = getSheetLayout(pattern, statistics, cell);
@@ -94,7 +109,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   drawBrand(ctx, layout.padding, Math.max(20, layout.header * 0.35), Math.max(0.8, cell / 16));
   ctx.fillStyle = '#34313B'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.font = `700 ${Math.max(16, Math.round(cell * 0.9))}px "PingFang SC", sans-serif`;
-  ctx.fillText('拼豆图纸生成器', layout.padding + Math.max(36, cell * 2.2), layout.header * 0.45);
+  ctx.fillText(CREATOR_WATERMARK, layout.padding + Math.max(36, cell * 2.2), layout.header * 0.45);
   ctx.textAlign = 'right'; ctx.fillStyle = '#8A8495'; ctx.font = `500 ${Math.max(11, Math.round(cell * 0.55))}px sans-serif`;
   ctx.fillText(title, paperWidth - layout.padding, layout.header * 0.45);
 
@@ -159,5 +174,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   ctx.fillText(`共${statistics.length}色　总计${number.format(total)}颗`, paperWidth - layout.padding, statsY - 9);
   ctx.fillStyle = '#625E69'; ctx.font = `500 ${Math.max(10, Math.round(cell * 0.52))}px "PingFang SC", sans-serif`;
   ctx.fillText(`图纸尺寸：${pattern.width} × ${pattern.height}格`, paperWidth - layout.padding, statsY + 14);
+  ctx.textAlign = 'left'; ctx.fillStyle = '#8A8495'; ctx.font = `600 ${Math.max(10, Math.round(cell * 0.52))}px "PingFang SC", sans-serif`;
+  ctx.fillText(`${CREATOR_WATERMARK} · 原创图纸，禁止盗用`, layout.padding, statsY + 14);
   return layout;
 }

@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PATTERN_SIZES, BEAD_DIAMETER_MM, physicalSizeCm } from '../src/state/config.js';
+import {
+  PATTERN_SIZES,
+  COLOR_OPTIONS,
+  BEAD_DIAMETER_MM,
+  physicalSizeCm,
+} from '../src/state/config.js';
 
 test('预设尺寸的总豆数正确', () => {
   const totals = Object.fromEntries(PATTERN_SIZES.map((size) => [`${size.width}x${size.height}`, size.width * size.height]));
@@ -12,6 +17,10 @@ test('预设尺寸的总豆数正确', () => {
     '104x104': 10816,
     '70x104': 7280,
   });
+});
+
+test('颜色上限包含15色档位', () => {
+  assert.deepEqual(COLOR_OPTIONS.map((option) => option.value), [15, 24, 48, 96, 221]);
 });
 
 test('成品尺寸按每颗豆子直径2.6毫米计算', () => {

@@ -8,6 +8,7 @@ export const PATTERN_SIZES = [
 ];
 
 export const COLOR_OPTIONS = [
+  { value: 15, label: '最多 15 色', description: '用色更少，备豆更轻松' },
   { value: 24, label: '最多 24 色', description: '效果和难度更均衡', recommended: true },
   { value: 48, label: '最多 48 色', description: '适合保留更多细节' },
   { value: 96, label: '最多 96 色', description: '颜色层次更加丰富' },
