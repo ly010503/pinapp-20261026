@@ -31,6 +31,30 @@ test('深蓝色块不会被误判成黑色轮廓', () => {
   assert.equal(mask[width + 1], 0);
 });
 
+test('孤立暗点和成片深色阴影不会被强制改成纯黑', () => {
+  const width = 7, height = 7;
+  const pixels = makePixels(width, height, [238, 225, 202]);
+  pixels.set([48, 43, 42, 255], (width + 1) * 4);
+  for (let y = 2; y <= 4; y += 1) {
+    for (let x = 2; x <= 4; x += 1) {
+      pixels.set([52, 43, 38, 255], (y * width + x) * 4);
+    }
+  }
+
+  const mask = createOutlineMask(pixels, width, height);
+  assert.equal(mask[width + 1], 0, '孤立暗点不应生成黑色豆');
+  assert.equal(mask[3 * width + 3], 0, '实心深色阴影不应被当作轮廓');
+});
+
+test('真正的纯黑细节仍会保留', () => {
+  const width = 3, height = 3;
+  const pixels = makePixels(width, height, [245, 245, 245]);
+  pixels.set([12, 12, 12, 255], (width + 1) * 4);
+
+  const mask = createOutlineMask(pixels, width, height);
+  assert.equal(mask[width + 1], 1);
+});
+
 test('优先使用MARD H7作为轮廓黑色', () => {
   const palette = [
     { code: 'H6', rgb: [47, 43, 47] },

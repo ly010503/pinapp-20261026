@@ -11,6 +11,8 @@ function pixelLuminance(pixels, position) {
 export function createOutlineMask(pixels, width, height) {
   const mask = new Uint8Array(width * height);
   if (!pixels?.length || !width || !height) return mask;
+  const candidates = new Uint8Array(width * height);
+  const trueBlack = new Uint8Array(width * height);
   const neighborOffsets = [
     [-1, -1], [0, -1], [1, -1],
     [-1, 0], [1, 0],
@@ -28,13 +30,14 @@ export function createOutlineMask(pixels, width, height) {
       const minimum = Math.min(r, g, b);
       const chroma = maximum - minimum;
       const luminance = pixelLuminance(pixels, position);
-      const nearBlackCore = maximum <= 65 && chroma <= 50;
+      const nearBlackCore = maximum <= 58 && chroma <= 35;
       if (nearBlackCore) {
-        mask[position] = 1;
+        candidates[position] = 1;
+        if (maximum <= 28 && chroma <= 12) trueBlack[position] = 1;
         continue;
       }
 
-      if (luminance > 150 || chroma > 100) continue;
+      if (luminance > 125 || chroma > 58) continue;
       let brightNeighbors = 0;
       let neighborTotal = 0;
       let neighborCount = 0;
@@ -50,10 +53,50 @@ export function createOutlineMask(pixels, width, height) {
       }
       const neighborAverage = neighborCount ? neighborTotal / neighborCount : luminance;
       if (brightNeighbors >= 2
-        && brightest - luminance >= 50
-        && neighborAverage - luminance >= 20) {
-        mask[position] = 1;
+        && brightest - luminance >= 58
+        && neighborAverage - luminance >= 26) {
+        candidates[position] = 1;
       }
+    }
+  }
+
+  // 轮廓通常是细长或环形的连续区域。过滤孤立暗点和实心阴影块，
+  // 避免将人物纹理、发丝过渡或深色衣服强制替换成纯黑 H7。
+  const visited = new Uint8Array(width * height);
+  for (let start = 0; start < candidates.length; start += 1) {
+    if (!candidates[start] || visited[start]) continue;
+    const stack = [start];
+    const component = [];
+    let minX = width, minY = height, maxX = 0, maxY = 0, strongCount = 0;
+    visited[start] = 1;
+
+    while (stack.length) {
+      const position = stack.pop();
+      component.push(position);
+      const x = position % width, y = Math.floor(position / width);
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      strongCount += trueBlack[position];
+
+      for (const [offsetX, offsetY] of neighborOffsets) {
+        const nx = x + offsetX, ny = y + offsetY;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        const next = ny * width + nx;
+        if (candidates[next] && !visited[next]) {
+          visited[next] = 1;
+          stack.push(next);
+        }
+      }
+    }
+
+    const componentWidth = maxX - minX + 1;
+    const componentHeight = maxY - minY + 1;
+    const shortSide = Math.min(componentWidth, componentHeight);
+    const density = component.length / (componentWidth * componentHeight);
+    const lineLike = component.length >= 3 && (shortSide <= 2 || density <= 0.58);
+    const genuinelyBlack = strongCount > 0;
+    if (lineLike || genuinelyBlack) {
+      component.forEach((position) => { mask[position] = 1; });
     }
   }
   return mask;
