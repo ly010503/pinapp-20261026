@@ -4,6 +4,7 @@ const number = new Intl.NumberFormat('zh-CN');
 export const GUIDE_STEP = 5;
 export const CREATOR_WATERMARK = '@小石豆图';
 export const COPYRIGHT_NOTICE = '原创作品 · 禁止盗用';
+export const MIRROR_BADGE_TEXT = '镜像图';
 
 export function getCoordinateValues(length, step = GUIDE_STEP) {
   const values = [1];
@@ -106,10 +107,26 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   ctx.canvas.width = paperWidth; ctx.canvas.height = paperHeight;
   ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, paperWidth, paperHeight);
 
-  drawBrand(ctx, layout.padding, Math.max(20, layout.header * 0.35), Math.max(0.8, cell / 16));
+  let brandX = layout.padding;
+  if (mirrorX) {
+    const badgeWidth = Math.max(68, Math.round(cell * 3.5));
+    const badgeHeight = Math.max(30, Math.round(cell * 1.25));
+    const badgeY = Math.round(layout.header * 0.45 - badgeHeight / 2);
+    ctx.fillStyle = '#7D68C8';
+    roundRect(ctx, layout.padding, badgeY, badgeWidth, badgeHeight, Math.max(8, Math.round(cell * 0.4)));
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `800 ${Math.max(14, Math.round(cell * 0.66))}px "PingFang SC", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(MIRROR_BADGE_TEXT, layout.padding + badgeWidth / 2, badgeY + badgeHeight / 2);
+    brandX += badgeWidth + Math.max(14, Math.round(cell * 0.7));
+  }
+
+  drawBrand(ctx, brandX, Math.max(20, layout.header * 0.35), Math.max(0.8, cell / 16));
   ctx.fillStyle = '#34313B'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.font = `700 ${Math.max(16, Math.round(cell * 0.9))}px "PingFang SC", sans-serif`;
-  ctx.fillText(CREATOR_WATERMARK, layout.padding + Math.max(36, cell * 2.2), layout.header * 0.45);
+  ctx.fillText(CREATOR_WATERMARK, brandX + Math.max(36, cell * 2.2), layout.header * 0.45);
   ctx.textAlign = 'right'; ctx.fillStyle = '#8A8495'; ctx.font = `500 ${Math.max(11, Math.round(cell * 0.55))}px sans-serif`;
   ctx.fillText(title, paperWidth - layout.padding, layout.header * 0.45);
 
