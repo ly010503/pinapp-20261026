@@ -160,7 +160,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     height: gridHeight,
     text: tiledWatermarkText,
     fontSize: Math.max(16, Math.round(cell * 0.72)),
-    opacity: 0.085,
+    opacity: 0.16,
   });
 
   ctx.strokeStyle = '#C9CDD5'; ctx.lineWidth = 1; ctx.beginPath();

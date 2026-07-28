@@ -21,7 +21,7 @@ export function drawTiledWatermark(ctx, {
   height,
   text,
   fontSize,
-  opacity = 0.1,
+  opacity = 0.18,
 } = {}) {
   if (!text || width <= 0 || height <= 0) return;
   const label = normalizeWatermarkText(text);
@@ -33,7 +33,7 @@ export function drawTiledWatermark(ctx, {
   ctx.translate(x + width / 2, y + height / 2);
   ctx.rotate(-Math.PI / 6);
   ctx.globalAlpha = opacity;
-  ctx.fillStyle = '#6F54A8';
+  ctx.fillStyle = '#5F468F';
   ctx.font = `750 ${fontSize}px "PingFang SC", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
