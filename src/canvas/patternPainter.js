@@ -90,7 +90,7 @@ export function drawEffect(ctx, pattern, palette, {
     width: pattern.width * cell,
     height: pattern.height * cell,
     text: tiledWatermarkText,
-    fontSize: Math.max(18, Math.round(cell * 0.82)),
+    fontSize: Math.max(22, Math.round(cell * 1.05)),
   });
   ctx.strokeStyle = 'rgba(98, 90, 110, .14)'; ctx.lineWidth = 1; ctx.beginPath();
   for (let x = 0; x <= pattern.width; x += 1) { const px = padding + x * cell + 0.5; ctx.moveTo(px, padding); ctx.lineTo(px, padding + pattern.height * cell); }
@@ -159,7 +159,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     width: gridWidth,
     height: gridHeight,
     text: tiledWatermarkText,
-    fontSize: Math.max(16, Math.round(cell * 0.72)),
+    fontSize: Math.max(20, Math.round(cell * 0.92)),
     opacity: 0.16,
   });
 
