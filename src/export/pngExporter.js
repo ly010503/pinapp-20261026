@@ -26,8 +26,9 @@ function safeCell(pattern, statistics, type) {
   while (cell >= 12) {
     if (type === 'effect') {
       const padding = Math.max(18, cell * 2);
+      const footer = Math.max(80, Math.round(cell * 6));
       const width = pattern.width * cell + padding * 2;
-      const height = pattern.height * cell + padding * 2;
+      const height = pattern.height * cell + padding * 2 + footer;
       if (width * height <= maxPixels) return { cell, reduced: cell < preferred };
     } else {
       const width = pattern.width * cell + cell * 6;

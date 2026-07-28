@@ -44,7 +44,7 @@ function drawBrand(ctx, x, y, scale = 1) {
 export function getSheetLayout(pattern, statistics, cell) {
   const padding = Math.max(28, Math.round(cell * 1.6));
   const coordinate = Math.max(24, Math.round(cell * 1.25));
-  const header = Math.max(56, Math.round(cell * 2.6));
+  const header = Math.max(92, Math.round(cell * 5.2));
   const gridWidth = pattern.width * cell;
   const gridHeight = pattern.height * cell;
   const paperWidth = Math.max(gridWidth + (padding + coordinate) * 2, Math.round(cell * 22));
@@ -70,7 +70,7 @@ export function drawEffect(ctx, pattern, palette, {
   showWatermark = false,
 } = {}) {
   const padding = Math.max(18, cell * 2);
-  const footer = showWatermark ? Math.max(50, Math.round(cell * 2.8)) : 0;
+  const footer = showWatermark ? Math.max(80, Math.round(cell * 6)) : 0;
   const width = pattern.width * cell + padding * 2;
   const height = pattern.height * cell + padding * 2 + footer;
   ctx.canvas.width = width; ctx.canvas.height = height;
@@ -87,11 +87,15 @@ export function drawEffect(ctx, pattern, palette, {
   for (let y = 0; y <= pattern.height; y += 1) { const py = padding + y * cell + 0.5; ctx.moveTo(padding, py); ctx.lineTo(padding + pattern.width * cell, py); }
   ctx.stroke();
   if (showWatermark) {
-    ctx.fillStyle = '#6F6878';
-    ctx.font = `800 ${Math.max(18, Math.round(cell * 0.72))}px "PingFang SC", sans-serif`;
+    const footerTop = height - footer;
+    ctx.fillStyle = '#4F426F';
+    ctx.font = `800 ${Math.max(28, Math.round(cell * 1.4))}px "PingFang SC", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${CREATOR_WATERMARK}　${COPYRIGHT_NOTICE}`, width / 2, height - footer / 2);
+    ctx.fillText(CREATOR_WATERMARK, width / 2, footerTop + footer * 0.38);
+    ctx.fillStyle = '#7666B3';
+    ctx.font = `750 ${Math.max(19, Math.round(cell * 0.9))}px "PingFang SC", sans-serif`;
+    ctx.fillText(COPYRIGHT_NOTICE, width / 2, footerTop + footer * 0.7);
   }
   return { width, height };
 }
@@ -109,25 +113,25 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
 
   let brandX = layout.padding;
   if (mirrorX) {
-    const badgeWidth = Math.max(68, Math.round(cell * 3.5));
-    const badgeHeight = Math.max(30, Math.round(cell * 1.25));
+    const badgeWidth = Math.max(88, Math.round(cell * 4.8));
+    const badgeHeight = Math.max(38, Math.round(cell * 1.9));
     const badgeY = Math.round(layout.header * 0.45 - badgeHeight / 2);
     ctx.fillStyle = '#7D68C8';
     roundRect(ctx, layout.padding, badgeY, badgeWidth, badgeHeight, Math.max(8, Math.round(cell * 0.4)));
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = `800 ${Math.max(14, Math.round(cell * 0.66))}px "PingFang SC", sans-serif`;
+    ctx.font = `800 ${Math.max(18, Math.round(cell * 0.95))}px "PingFang SC", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(MIRROR_BADGE_TEXT, layout.padding + badgeWidth / 2, badgeY + badgeHeight / 2);
     brandX += badgeWidth + Math.max(14, Math.round(cell * 0.7));
   }
 
-  drawBrand(ctx, brandX, Math.max(20, layout.header * 0.35), Math.max(0.8, cell / 16));
+  drawBrand(ctx, brandX, Math.max(28, layout.header * 0.38), Math.max(1, cell / 12));
   ctx.fillStyle = '#34313B'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.font = `800 ${Math.max(20, Math.round(cell * 1.08))}px "PingFang SC", sans-serif`;
-  ctx.fillText(CREATOR_WATERMARK, brandX + Math.max(36, cell * 2.2), layout.header * 0.45);
-  ctx.textAlign = 'right'; ctx.fillStyle = '#7666B3'; ctx.font = `700 ${Math.max(15, Math.round(cell * 0.72))}px "PingFang SC", sans-serif`;
+  ctx.font = `800 ${Math.max(30, Math.round(cell * 1.75))}px "PingFang SC", sans-serif`;
+  ctx.fillText(CREATOR_WATERMARK, brandX + Math.max(44, cell * 2.8), layout.header * 0.45);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#7666B3'; ctx.font = `750 ${Math.max(21, Math.round(cell * 1.15))}px "PingFang SC", sans-serif`;
   ctx.fillText(title, paperWidth - layout.padding, layout.header * 0.45);
 
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
@@ -191,7 +195,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   ctx.fillText(`共${statistics.length}色　总计${number.format(total)}颗`, paperWidth - layout.padding, statsY - 9);
   ctx.fillStyle = '#625E69'; ctx.font = `500 ${Math.max(10, Math.round(cell * 0.52))}px "PingFang SC", sans-serif`;
   ctx.fillText(`图纸尺寸：${pattern.width} × ${pattern.height}格`, paperWidth - layout.padding, statsY + 14);
-  ctx.textAlign = 'left'; ctx.fillStyle = '#7666B3'; ctx.font = `700 ${Math.max(13, Math.round(cell * 0.65))}px "PingFang SC", sans-serif`;
+  ctx.textAlign = 'left'; ctx.fillStyle = '#7666B3'; ctx.font = `750 ${Math.max(17, Math.round(cell * 0.9))}px "PingFang SC", sans-serif`;
   ctx.fillText(`${CREATOR_WATERMARK} · 原创图纸，禁止盗用`, layout.padding, statsY + 14);
   return layout;
 }
