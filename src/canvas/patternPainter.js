@@ -70,7 +70,7 @@ export function drawEffect(ctx, pattern, palette, {
   showWatermark = false,
 } = {}) {
   const padding = Math.max(18, cell * 2);
-  const footer = showWatermark ? Math.max(42, Math.round(cell * 2.4)) : 0;
+  const footer = showWatermark ? Math.max(50, Math.round(cell * 2.8)) : 0;
   const width = pattern.width * cell + padding * 2;
   const height = pattern.height * cell + padding * 2 + footer;
   ctx.canvas.width = width; ctx.canvas.height = height;
@@ -88,7 +88,7 @@ export function drawEffect(ctx, pattern, palette, {
   ctx.stroke();
   if (showWatermark) {
     ctx.fillStyle = '#6F6878';
-    ctx.font = `700 ${Math.max(14, Math.round(cell * 0.55))}px "PingFang SC", sans-serif`;
+    ctx.font = `800 ${Math.max(18, Math.round(cell * 0.72))}px "PingFang SC", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${CREATOR_WATERMARK}　${COPYRIGHT_NOTICE}`, width / 2, height - footer / 2);
@@ -125,9 +125,9 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
 
   drawBrand(ctx, brandX, Math.max(20, layout.header * 0.35), Math.max(0.8, cell / 16));
   ctx.fillStyle = '#34313B'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.font = `700 ${Math.max(16, Math.round(cell * 0.9))}px "PingFang SC", sans-serif`;
+  ctx.font = `800 ${Math.max(20, Math.round(cell * 1.08))}px "PingFang SC", sans-serif`;
   ctx.fillText(CREATOR_WATERMARK, brandX + Math.max(36, cell * 2.2), layout.header * 0.45);
-  ctx.textAlign = 'right'; ctx.fillStyle = '#8A8495'; ctx.font = `500 ${Math.max(11, Math.round(cell * 0.55))}px sans-serif`;
+  ctx.textAlign = 'right'; ctx.fillStyle = '#7666B3'; ctx.font = `700 ${Math.max(15, Math.round(cell * 0.72))}px "PingFang SC", sans-serif`;
   ctx.fillText(title, paperWidth - layout.padding, layout.header * 0.45);
 
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
@@ -191,7 +191,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   ctx.fillText(`共${statistics.length}色　总计${number.format(total)}颗`, paperWidth - layout.padding, statsY - 9);
   ctx.fillStyle = '#625E69'; ctx.font = `500 ${Math.max(10, Math.round(cell * 0.52))}px "PingFang SC", sans-serif`;
   ctx.fillText(`图纸尺寸：${pattern.width} × ${pattern.height}格`, paperWidth - layout.padding, statsY + 14);
-  ctx.textAlign = 'left'; ctx.fillStyle = '#8A8495'; ctx.font = `600 ${Math.max(10, Math.round(cell * 0.52))}px "PingFang SC", sans-serif`;
+  ctx.textAlign = 'left'; ctx.fillStyle = '#7666B3'; ctx.font = `700 ${Math.max(13, Math.round(cell * 0.65))}px "PingFang SC", sans-serif`;
   ctx.fillText(`${CREATOR_WATERMARK} · 原创图纸，禁止盗用`, layout.padding, statsY + 14);
   return layout;
 }
