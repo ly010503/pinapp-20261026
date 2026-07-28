@@ -67,13 +67,14 @@ async function renderWithFallback(draw, selection) {
   throw lastError || new Error('PNG 生成失败，请尝试较小的图纸尺寸');
 }
 
-export async function exportEffectPng(pattern, palette) {
+export async function exportEffectPng(pattern, palette, { tiledWatermarkText = '' } = {}) {
   const selection = safeCell(pattern, [], 'effect');
   const result = await renderWithFallback(
     (ctx, cell) => drawEffect(ctx, pattern, palette, {
       cell,
       background: '#FFFDF8',
       showWatermark: true,
+      tiledWatermarkText,
     }),
     selection,
   );
@@ -81,12 +82,16 @@ export async function exportEffectPng(pattern, palette) {
   return result;
 }
 
-export async function exportPatternPng(pattern, palette, statistics, { mirrorX = false } = {}) {
+export async function exportPatternPng(pattern, palette, statistics, {
+  mirrorX = false,
+  tiledWatermarkText = '',
+} = {}) {
   const selection = safeCell(pattern, statistics, 'pattern');
   const result = await renderWithFallback(
     (ctx, cell) => drawPatternSheet(ctx, pattern, palette, statistics, {
       cell,
       mirrorX,
+      tiledWatermarkText,
       title: mirrorX ? `镜像制作图 · ${COPYRIGHT_NOTICE}` : COPYRIGHT_NOTICE,
     }),
     selection,

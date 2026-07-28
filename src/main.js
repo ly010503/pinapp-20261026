@@ -19,6 +19,10 @@ import { calculateStatistics, statisticsTotal } from './pattern/statistics.js';
 import { createWhiteBackgroundMask } from './pattern/backgroundMask.js';
 import { replacePatternCell, replacePatternColor } from './pattern/colorReplacement.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
+import {
+  DEFAULT_TILED_WATERMARK,
+  normalizeWatermarkText,
+} from './canvas/tiledWatermark.js';
 import { exportEffectPng, exportPatternPng } from './export/pngExporter.js';
 import { notify } from './ui/notifications.js';
 
@@ -320,6 +324,13 @@ async function copyList() {
   } catch { notify('复制失败，请检查浏览器权限', 'error'); }
 }
 
+function getExportWatermarkText() {
+  if (!$('#tiledWatermarkEnabled').checked) return '';
+  const text = normalizeWatermarkText($('#tiledWatermarkText').value);
+  $('#tiledWatermarkText').value = text;
+  return text;
+}
+
 function updateReplacementTarget() {
   const target = state.palette[replacementTargetIndex];
   $('#replaceTargetText').textContent = target ? `${target.code} · ${target.name}` : '请在下方选择一种颜色';
@@ -495,6 +506,16 @@ function bindDialogs() {
 }
 
 function bindResults() {
+  const watermarkEnabled = $('#tiledWatermarkEnabled');
+  const watermarkText = $('#tiledWatermarkText');
+  const syncWatermarkSetting = () => {
+    watermarkText.disabled = !watermarkEnabled.checked;
+    $('#exportWatermarkCard').classList.toggle('disabled', !watermarkEnabled.checked);
+  };
+  watermarkText.value = DEFAULT_TILED_WATERMARK;
+  watermarkEnabled.addEventListener('change', syncWatermarkSetting);
+  syncWatermarkSetting();
+
   $$('.mode-switch button').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
   $('#toggleColors').addEventListener('click', () => { showAllColors = !showAllColors; renderColorList(); });
   $('#copyColors').addEventListener('click', copyList);
@@ -522,15 +543,15 @@ function bindResults() {
     } catch { notify('当前浏览器不支持全屏查看', 'error'); }
   });
   $('#saveEffect').addEventListener('click', async () => {
-    try { const result = await exportEffectPng(state.currentPattern, state.palette); if (result.reduced) notify(`设备内存有限，已安全导出 ${result.width}×${result.height}px，图纸内容不受影响。`); else notify(`高清效果图已保存（${result.width}×${result.height}px）`, 'success'); }
+    try { const result = await exportEffectPng(state.currentPattern, state.palette, { tiledWatermarkText: getExportWatermarkText() }); if (result.reduced) notify(`设备内存有限，已安全导出 ${result.width}×${result.height}px，图纸内容不受影响。`); else notify(`高清效果图已保存（${result.width}×${result.height}px）`, 'success'); }
     catch (error) { notify(error.message || '保存失败，请重试', 'error', 5000); }
   });
   $('#savePattern').addEventListener('click', async () => {
-    try { const result = await exportPatternPng(state.currentPattern, state.palette, state.statistics); if (result.reduced) notify(`设备内存有限，已安全导出 ${result.width}×${result.height}px，色号和网格不受影响。`); else notify(`高清制作图已保存（${result.width}×${result.height}px）`, 'success'); }
+    try { const result = await exportPatternPng(state.currentPattern, state.palette, state.statistics, { tiledWatermarkText: getExportWatermarkText() }); if (result.reduced) notify(`设备内存有限，已安全导出 ${result.width}×${result.height}px，色号和网格不受影响。`); else notify(`高清制作图已保存（${result.width}×${result.height}px）`, 'success'); }
     catch (error) { notify(error.message || '保存失败，请重试', 'error', 5000); }
   });
   $('#saveMirroredPattern').addEventListener('click', async () => {
-    try { const result = await exportPatternPng(state.currentPattern, state.palette, state.statistics, { mirrorX: true }); if (result.reduced) notify(`设备内存有限，已安全导出镜像制作图 ${result.width}×${result.height}px，色号和网格不受影响。`); else notify(`高清镜像制作图已保存（${result.width}×${result.height}px）`, 'success'); }
+    try { const result = await exportPatternPng(state.currentPattern, state.palette, state.statistics, { mirrorX: true, tiledWatermarkText: getExportWatermarkText() }); if (result.reduced) notify(`设备内存有限，已安全导出镜像制作图 ${result.width}×${result.height}px，色号和网格不受影响。`); else notify(`高清镜像制作图已保存（${result.width}×${result.height}px）`, 'success'); }
     catch (error) { notify(error.message || '镜像制作图保存失败，请重试', 'error', 5000); }
   });
 }

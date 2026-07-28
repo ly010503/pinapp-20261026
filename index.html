@@ -132,6 +132,17 @@
           </div>
         </article>
 
+        <div id="exportWatermarkCard" class="export-watermark">
+          <label class="watermark-toggle" for="tiledWatermarkEnabled">
+            <span><strong>铺满防盗水印</strong><small>保存时添加低透明度斜向水印，不遮挡色号</small></span>
+            <input id="tiledWatermarkEnabled" type="checkbox" checked />
+          </label>
+          <label class="watermark-text-field" for="tiledWatermarkText">
+            <span>水印文案</span>
+            <input id="tiledWatermarkText" type="text" value="@小红薯 小石豆图" maxlength="40" autocomplete="off" />
+          </label>
+        </div>
+
         <div class="save-actions" aria-label="保存图纸">
           <button id="saveEffect" class="secondary-save"><span>▧</span>保存高清效果图</button>
           <button id="savePattern" class="primary-button"><span>⇩</span>保存高清制作图</button>

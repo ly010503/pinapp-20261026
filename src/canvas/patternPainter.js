@@ -1,4 +1,5 @@
 import { getPatternPosition } from '../pattern/mirror.js';
+import { drawTiledWatermark } from './tiledWatermark.js';
 
 const number = new Intl.NumberFormat('zh-CN');
 export const GUIDE_STEP = 5;
@@ -68,6 +69,7 @@ export function drawEffect(ctx, pattern, palette, {
   highlightedCode = null,
   background = '#FFFDF8',
   showWatermark = false,
+  tiledWatermarkText = '',
 } = {}) {
   const padding = Math.max(18, cell * 2);
   const footer = showWatermark ? Math.max(80, Math.round(cell * 6)) : 0;
@@ -82,6 +84,14 @@ export function drawEffect(ctx, pattern, palette, {
     ctx.fillRect(padding + x * cell, padding + y * cell, cell, cell);
   }
   ctx.globalAlpha = 1;
+  drawTiledWatermark(ctx, {
+    x: padding,
+    y: padding,
+    width: pattern.width * cell,
+    height: pattern.height * cell,
+    text: tiledWatermarkText,
+    fontSize: Math.max(18, Math.round(cell * 0.82)),
+  });
   ctx.strokeStyle = 'rgba(98, 90, 110, .14)'; ctx.lineWidth = 1; ctx.beginPath();
   for (let x = 0; x <= pattern.width; x += 1) { const px = padding + x * cell + 0.5; ctx.moveTo(px, padding); ctx.lineTo(px, padding + pattern.height * cell); }
   for (let y = 0; y <= pattern.height; y += 1) { const py = padding + y * cell + 0.5; ctx.moveTo(padding, py); ctx.lineTo(padding + pattern.width * cell, py); }
@@ -105,6 +115,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   highlightedCode = null,
   title = COPYRIGHT_NOTICE,
   mirrorX = false,
+  tiledWatermarkText = '',
 } = {}) {
   const layout = getSheetLayout(pattern, statistics, cell);
   const { paperWidth, paperHeight, gridX, gridY, gridWidth, gridHeight } = layout;
@@ -142,6 +153,15 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     ctx.fillRect(gridX + x * cell, gridY + y * cell, cell, cell);
   }
   ctx.globalAlpha = 1;
+  drawTiledWatermark(ctx, {
+    x: gridX,
+    y: gridY,
+    width: gridWidth,
+    height: gridHeight,
+    text: tiledWatermarkText,
+    fontSize: Math.max(16, Math.round(cell * 0.72)),
+    opacity: 0.085,
+  });
 
   ctx.strokeStyle = '#C9CDD5'; ctx.lineWidth = 1; ctx.beginPath();
   for (let x = 0; x <= pattern.width; x += 1) { const px = Math.round(gridX + x * cell) + 0.5; ctx.moveTo(px, gridY); ctx.lineTo(px, gridY + gridHeight); }
