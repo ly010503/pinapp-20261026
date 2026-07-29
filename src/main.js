@@ -475,6 +475,38 @@ function applyColorReplacement() {
   );
 }
 
+function replaceCellWithBlank(cell) {
+  const blank = state.palette.find((color) => color.manualOnly);
+  if (!blank) return notify('纯白留白加载失败，请刷新页面', 'error');
+  if (cell.colorIndex === blank.index) return notify('这个格子已经是纯白留白');
+  if (!replacePatternCell(state.currentPattern, cell.position, blank.index)) {
+    return notify('当前格子没有发生变化', 'error');
+  }
+
+  state.currentPattern.backgroundMask = createWhiteBackgroundMask(
+    state.currentPattern,
+    state.palette,
+    state.currentPattern.sourcePixels,
+  );
+  state.statistics = calculateStatistics(
+    state.currentPattern.indices,
+    state.palette,
+    state.currentPattern.backgroundMask,
+  );
+  if (statisticsTotal(state.statistics) !== countPatternBeans(
+    state.currentPattern.indices,
+    state.palette,
+    state.currentPattern.backgroundMask,
+  )) {
+    return notify('快捷留白后的颜色统计校验失败，请重新生成图纸', 'error');
+  }
+
+  state.highlightedCode = null;
+  renderStatistics();
+  renderer.rebuild();
+  notify(`第 ${cell.x + 1} 列、第 ${cell.y + 1} 行已快速留白`, 'success');
+}
+
 function bindUpload() {
   const zone = $('#uploadZone'), input = $('#fileInput');
   const open = () => input.click();
@@ -553,6 +585,14 @@ function bindResults() {
     replacementTargetIndex = Number(button.dataset.index);
     updateReplacementTarget();
     renderReplacementPalette();
+  });
+  $('#resultStage').addEventListener('contextmenu', (event) => {
+    if (state.previewMode !== 'pattern' || !state.currentPattern) return;
+    if (event.target.closest('button')) return;
+    const cell = renderer.hitTestCell(event.clientX, event.clientY);
+    if (!cell) return;
+    event.preventDefault();
+    replaceCellWithBlank(cell);
   });
   $('#confirmReplaceColor').addEventListener('click', applyColorReplacement);
   $('#colorList').addEventListener('click', (event) => {

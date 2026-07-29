@@ -101,6 +101,7 @@ export class ResultCanvasRenderer {
     this.stage.addEventListener('wheel', (event) => { event.preventDefault(); this.zoomAt(event.deltaY < 0 ? 1.12 : 0.89, event.clientX, event.clientY); }, { passive: false });
     this.stage.addEventListener('pointerdown', (event) => {
       if (event.target.closest('button')) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
       this.stage.setPointerCapture(event.pointerId); this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       const viewport = this.getState().viewport;
       if (this.pointers.size === 1) {
