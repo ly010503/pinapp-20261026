@@ -181,6 +181,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     const position = getPatternPosition(pattern.width, x, y, mirrorX);
     if (pattern.backgroundMask?.[position]) continue;
     const color = palette[pattern.indices[position]];
+    if (color.hideCode) continue;
     const dark = colorLuminance(color.rgb) < 0.36;
     const tx = gridX + (x + 0.5) * cell, ty = gridY + (y + 0.52) * cell;
     ctx.lineWidth = Math.max(0.75, cell * 0.045);
@@ -209,7 +210,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     ctx.font = `600 ${Math.max(9, Math.round(cell * 0.47))}px "PingFang SC", sans-serif`; ctx.fillText(`${number.format(item.count)}颗`, x + layout.cardWidth / 2, y + layout.cardHeight * 0.72);
   });
 
-  const total = pattern.width * pattern.height;
+  const total = statistics.reduce((sum, item) => sum + item.count, 0);
   const statsY = paperHeight - layout.padding - layout.statsHeight * 0.46;
   ctx.textAlign = 'right'; ctx.fillStyle = '#7666B3'; ctx.font = `700 ${Math.max(12, Math.round(cell * 0.65))}px "PingFang SC", sans-serif`;
   ctx.fillText(`共${statistics.length}色　总计${number.format(total)}颗`, paperWidth - layout.padding, statsY - 9);

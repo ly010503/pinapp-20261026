@@ -10,12 +10,17 @@ import {
 } from './state/config.js';
 import { store } from './state/store.js';
 import { preparePalette } from './color/colorMatcher.js';
+import {
+  MANUAL_BLANK_COLOR,
+  getColorDisplayCode,
+  getColorDisplayLabel,
+} from './color/manualBlankColor.js';
 import { sortPaletteByRecent, updateRecentColorCodes } from './color/recentPalette.js';
 import { createAdjustedCanvas, getGridPixels } from './image/imageProcessor.js';
 import { getColorStyleAdjustments } from './image/colorStyle.js';
 import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
-import { calculateStatistics, statisticsTotal } from './pattern/statistics.js';
+import { calculateStatistics, countPatternBeans, statisticsTotal } from './pattern/statistics.js';
 import { createWhiteBackgroundMask } from './pattern/backgroundMask.js';
 import { replacePatternCell, replacePatternColor } from './pattern/colorReplacement.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
@@ -31,7 +36,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const number = new Intl.NumberFormat('zh-CN');
 const RECENT_COLORS_KEY = 'perler-recent-replacement-colors';
 const state = store.get();
-state.palette = preparePalette(paletteJson);
+state.palette = preparePalette([...paletteJson, MANUAL_BLANK_COLOR]);
 
 let generationVersion = 0;
 let showAllColors = false;
@@ -228,7 +233,7 @@ function renderColorList() {
 }
 
 function renderStatistics() {
-  const total = state.currentPattern.width * state.currentPattern.height;
+  const total = statisticsTotal(state.statistics);
   const actual = state.statistics.length;
   $('#summaryTotal').textContent = `${number.format(total)}颗`;
   $('#summaryColors').textContent = `${actual}种颜色`;
@@ -254,7 +259,9 @@ async function generate() {
     const pixels = getGridPixels(adjusted, width, height);
     const pattern = await generatePattern({
       pixels, width, height,
-      palette: state.palette.map(({ code, name, hex, rgb }) => ({ code, name, hex, rgb })),
+      palette: state.palette
+        .filter((color) => !color.manualOnly)
+        .map(({ code, name, hex, rgb }) => ({ code, name, hex, rgb })),
       maxColors: state.maxColors,
       reduceIsolated: true,
       mergeColors: true,
@@ -263,8 +270,10 @@ async function generate() {
     if (version !== generationVersion) return;
     pattern.sourcePixels = pixels;
     pattern.backgroundMask = createWhiteBackgroundMask(pattern, state.palette, pixels);
-    const statistics = calculateStatistics(pattern.indices, state.palette);
-    if (statisticsTotal(statistics) !== width * height) throw new Error('颜色统计校验失败，请重新生成');
+    const statistics = calculateStatistics(pattern.indices, state.palette, pattern.backgroundMask);
+    if (statisticsTotal(statistics) !== countPatternBeans(pattern.indices, state.palette, pattern.backgroundMask)) {
+      throw new Error('颜色统计校验失败，请重新生成');
+    }
     Object.assign(state, { currentPattern: pattern, statistics, highlightedCode: null, dirty: false, previewMode: 'effect' });
     showAllColors = false;
     $('#dirtyNotice').hidden = true;
@@ -333,7 +342,7 @@ function getExportWatermarkText() {
 
 function updateReplacementTarget() {
   const target = state.palette[replacementTargetIndex];
-  $('#replaceTargetText').textContent = target ? `${target.code} · ${target.name}` : '请在下方选择一种颜色';
+  $('#replaceTargetText').textContent = target ? getColorDisplayLabel(target) : '请在下方选择一种颜色';
   $('#confirmReplaceColor').disabled = !target || replacementTargetIndex === replacementSourceIndex;
 }
 
@@ -341,25 +350,34 @@ function renderReplacementPalette() {
   const container = $('#replacementPalette');
   const query = $('#replacementSearch').value.trim().toLocaleUpperCase('zh-CN');
   const fragment = document.createDocumentFragment();
-  const colors = sortPaletteByRecent(state.palette.filter((color) => (
+  const matchedColors = state.palette.filter((color) => (
     !query
     || color.code.toLocaleUpperCase('zh-CN').includes(query)
     || color.name.toLocaleUpperCase('zh-CN').includes(query)
-  )), recentReplacementCodes);
+    || color.searchTerms?.toLocaleUpperCase('zh-CN').includes(query)
+  ));
+  const colors = [
+    ...matchedColors.filter((color) => color.manualOnly),
+    ...sortPaletteByRecent(
+      matchedColors.filter((color) => !color.manualOnly),
+      recentReplacementCodes,
+    ),
+  ];
 
   colors.forEach((color) => {
     const button = makeButton('palette-swatch', {
       type: 'button',
       role: 'radio',
       'aria-checked': String(color.index === replacementTargetIndex),
-      'aria-label': `${recentReplacementCodes.includes(color.code) ? '最近使用 ' : ''}${color.code} ${color.name}`,
+      'aria-label': `${recentReplacementCodes.includes(color.code) ? '最近使用 ' : ''}${getColorDisplayLabel(color)}`,
     });
     button.dataset.index = color.index;
     button.classList.toggle('active', color.index === replacementTargetIndex);
     button.classList.toggle('current', color.index === replacementSourceIndex);
     button.classList.toggle('recent', recentReplacementCodes.includes(color.code));
+    button.classList.toggle('manual-blank', Boolean(color.manualOnly));
     const patch = document.createElement('i'); patch.style.backgroundColor = color.hex;
-    const code = document.createElement('strong'); code.textContent = color.code;
+    const code = document.createElement('strong'); code.textContent = getColorDisplayCode(color);
     const name = document.createElement('small'); name.textContent = color.name;
     button.append(patch, code, name);
     fragment.append(button);
@@ -385,7 +403,7 @@ function openReplaceColorDialog() {
   $('#replaceCurrentLabel').textContent = '当前选中的颜色';
   $('#confirmReplaceColor').textContent = '确认替换全部同色格子';
   $('#replaceCurrentSwatch').style.backgroundColor = source.hex;
-  $('#replaceCurrentCode').textContent = source.code;
+  $('#replaceCurrentCode').textContent = getColorDisplayCode(source);
   $('#replaceCurrentMeta').textContent = `${source.name} · 当前共 ${number.format(source.count)}颗`;
   $('#replacementSearch').value = '';
   updateReplacementTarget();
@@ -406,8 +424,8 @@ function openReplaceCellDialog(cell) {
   $('#replaceCurrentLabel').textContent = `第 ${cell.x + 1} 列 · 第 ${cell.y + 1} 行`;
   $('#confirmReplaceColor').textContent = '确认只替换这一格';
   $('#replaceCurrentSwatch').style.backgroundColor = source.hex;
-  $('#replaceCurrentCode').textContent = source.code;
-  $('#replaceCurrentMeta').textContent = `${source.name} · 只修改当前小格子`;
+  $('#replaceCurrentCode').textContent = getColorDisplayCode(source);
+  $('#replaceCurrentMeta').textContent = source.manualOnly ? '纯白留白 · 不显示色号、不统计数量' : `${source.name} · 只修改当前小格子`;
   $('#replacementSearch').value = '';
   updateReplacementTarget();
   renderReplacementPalette();
@@ -431,20 +449,28 @@ function applyColorReplacement() {
     state.palette,
     state.currentPattern.sourcePixels,
   );
-  state.statistics = calculateStatistics(state.currentPattern.indices, state.palette);
-  if (statisticsTotal(state.statistics) !== state.currentPattern.width * state.currentPattern.height) {
+  state.statistics = calculateStatistics(
+    state.currentPattern.indices,
+    state.palette,
+    state.currentPattern.backgroundMask,
+  );
+  if (statisticsTotal(state.statistics) !== countPatternBeans(
+    state.currentPattern.indices,
+    state.palette,
+    state.currentPattern.backgroundMask,
+  )) {
     return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
   }
-  state.highlightedCode = cellReplacement ? null : target.code;
-  rememberReplacementColor(target.code);
+  state.highlightedCode = cellReplacement || target.excludeFromStatistics ? null : target.code;
+  if (!target.manualOnly) rememberReplacementColor(target.code);
   showAllColors = state.statistics.length <= 8 ? false : showAllColors;
   renderStatistics();
   renderer.rebuild();
   $('#replaceColorDialog').close();
   notify(
     cellReplacement
-      ? `第 ${replacementCell.x + 1} 列、第 ${replacementCell.y + 1} 行已换成 ${target.code}`
-      : `已将 ${source.code} 替换为 ${target.code}，共 ${number.format(replaced)}格`,
+      ? `第 ${replacementCell.x + 1} 列、第 ${replacementCell.y + 1} 行已换成 ${getColorDisplayLabel(target)}`
+      : `已将 ${getColorDisplayCode(source)} 替换为 ${getColorDisplayLabel(target)}，共 ${number.format(replaced)}格`,
     'success',
   );
 }
@@ -567,4 +593,4 @@ document.addEventListener('keydown', (event) => {
 });
 renderer.resize();
 
-if (state.palette.length !== 221) notify('MARD 221 色卡加载不完整，请刷新页面', 'error');
+if (state.palette.filter((color) => !color.manualOnly).length !== 221) notify('MARD 221 色卡加载不完整，请刷新页面', 'error');

@@ -115,6 +115,7 @@ export class CanvasRenderer {
     this.ctx.save(); this.ctx.font = `600 ${fontSize}px ${getComputedStyle(document.body).fontFamily}`; this.ctx.textAlign = 'center'; this.ctx.textBaseline = 'middle';
     for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
       const color = palette[pattern.indices[y * pattern.width + x]];
+      if (!color || color.hideCode) continue;
       const luminance = color.rgb[0] * .299 + color.rgb[1] * .587 + color.rgb[2] * .114;
       this.ctx.fillStyle = luminance < 135 ? 'rgba(255,255,255,.9)' : 'rgba(12,13,16,.82)';
       this.ctx.fillText(color.code, originX + (x + .5) * cell, originY + (y + .52) * cell);
