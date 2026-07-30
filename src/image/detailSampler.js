@@ -1,79 +1,54 @@
 const clampByte = (value) => Math.max(0, Math.min(255, Math.round(value)));
 
-function luminance(r, g, b) {
-  return r * 0.2126 + g * 0.7152 + b * 0.0722;
-}
-
-function chroma(r, g, b) {
-  return Math.max(r, g, b) - Math.min(r, g, b);
-}
-
-function averageSamples(samples, positions = null) {
-  const count = positions?.length || samples.length / 3;
-  let r = 0, g = 0, b = 0;
-  for (let order = 0; order < count; order += 1) {
-    const position = positions ? positions[order] : order;
-    const offset = position * 3;
-    r += samples[offset];
-    g += samples[offset + 1];
-    b += samples[offset + 2];
-  }
-  return [r / count, g / count, b / count];
-}
-
-function blend(base, detail, weight) {
-  return base.map((value, index) => clampByte(value * (1 - weight) + detail[index] * weight));
-}
-
 /**
- * 普通缩图会把细白字、黑色描边和小面积鲜艳细节平均掉。
- * 此处在每个目标格的高分辨率采样块中保留少数但对比强烈的有效笔画。
+ * 在已经缩小到图纸尺寸的像素上做轻量锐化。
+ *
+ * 只调整当前格，不把少数黑白像素传播到相邻格；输出颜色还会被限制在
+ * 当前格与四邻格的颜色范围内，避免凭空产生过黑、过白或过艳的碎块。
  */
-export function selectDetailPreservingColor(samples) {
-  const count = Math.floor(samples.length / 3);
-  if (!count) return [255, 255, 255];
-  const average = averageSamples(samples);
-  const averageLuminance = luminance(...average);
-  const orderByLuminance = [...Array(count).keys()]
-    .sort((a, b) => luminance(
-      samples[a * 3],
-      samples[a * 3 + 1],
-      samples[a * 3 + 2],
-    ) - luminance(
-      samples[b * 3],
-      samples[b * 3 + 1],
-      samples[b * 3 + 2],
-    ));
-  const groupSize = Math.max(2, Math.ceil(count * 0.25));
-  const dark = averageSamples(samples, orderByLuminance.slice(0, groupSize));
-  const bright = averageSamples(samples, orderByLuminance.slice(-groupSize));
-  const darkLuminance = luminance(...dark);
-  const brightLuminance = luminance(...bright);
+export function enhanceGridDetails(pixels, width, height, strength = 0.28) {
+  const source = new Uint8ClampedArray(pixels);
+  const output = new Uint8ClampedArray(source);
+  if (width < 3 || height < 3 || strength <= 0) return output;
 
-  if (brightLuminance - darkLuminance >= 72) {
-    if (averageLuminance <= 112 && brightLuminance - averageLuminance >= 42) {
-      return blend(average, bright, 0.82);
-    }
-    if (averageLuminance >= 148 && averageLuminance - darkLuminance >= 42) {
-      return blend(average, dark, 0.82);
+  const rowStride = width * 4;
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const offset = (y * width + x) * 4;
+      const neighbors = [
+        offset - 4,
+        offset + 4,
+        offset - rowStride,
+        offset + rowStride,
+      ];
+      const averages = [0, 0, 0];
+      const details = [0, 0, 0];
+      let strongestDetail = 0;
+
+      for (let channel = 0; channel < 3; channel += 1) {
+        averages[channel] = neighbors.reduce(
+          (sum, neighborOffset) => sum + source[neighborOffset + channel],
+          0,
+        ) / neighbors.length;
+        details[channel] = source[offset + channel] - averages[channel];
+        strongestDetail = Math.max(strongestDetail, Math.abs(details[channel]));
+      }
+
+      // 小幅色差通常来自缩放插值或原图纹理，保持原样能减少杂色。
+      if (strongestDetail < 16) continue;
+
+      for (let channel = 0; channel < 3; channel += 1) {
+        const neighborhood = [
+          source[offset + channel],
+          ...neighbors.map((neighborOffset) => source[neighborOffset + channel]),
+        ];
+        const minimum = Math.min(...neighborhood);
+        const maximum = Math.max(...neighborhood);
+        const sharpened = source[offset + channel] + details[channel] * strength;
+        output[offset + channel] = clampByte(Math.max(minimum, Math.min(maximum, sharpened)));
+      }
     }
   }
 
-  const orderByChroma = [...Array(count).keys()].sort((a, b) => chroma(
-    samples[b * 3],
-    samples[b * 3 + 1],
-    samples[b * 3 + 2],
-  ) - chroma(
-    samples[a * 3],
-    samples[a * 3 + 1],
-    samples[a * 3 + 2],
-  ));
-  const colorful = averageSamples(samples, orderByChroma.slice(0, groupSize));
-  const averageChroma = chroma(...average);
-  const colorfulChroma = chroma(...colorful);
-  if (colorfulChroma >= 58 && colorfulChroma - averageChroma >= 28) {
-    return blend(average, colorful, 0.72);
-  }
-
-  return average.map(clampByte);
+  return output;
 }

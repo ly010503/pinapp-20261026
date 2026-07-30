@@ -1,4 +1,4 @@
-import { selectDetailPreservingColor } from './detailSampler.js';
+import { enhanceGridDetails } from './detailSampler.js';
 
 function applySharpen(imageData, amount) {
   if (amount <= 0) return imageData;
@@ -52,10 +52,9 @@ export function createAdjustedCanvas(image, transform, adjustments, maxDimension
 }
 
 export function getGridPixels(sourceCanvas, width, height) {
-  const sampleScale = 4;
   const canvas = document.createElement('canvas');
-  canvas.width = width * sampleScale;
-  canvas.height = height * sampleScale;
+  canvas.width = width;
+  canvas.height = height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
@@ -66,29 +65,6 @@ export function getGridPixels(sourceCanvas, width, height) {
   if (sourceRatio > targetRatio) { sw = sourceCanvas.height * targetRatio; sx = (sourceCanvas.width - sw) / 2; }
   else { sh = sourceCanvas.width / targetRatio; sy = (sourceCanvas.height - sh) / 2; }
   ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-
-  const source = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  const output = new Uint8ClampedArray(width * height * 4);
-  const samples = new Uint8Array(sampleScale * sampleScale * 3);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      let sampleOffset = 0;
-      for (let oy = 0; oy < sampleScale; oy += 1) {
-        for (let ox = 0; ox < sampleScale; ox += 1) {
-          const sourceOffset = (((y * sampleScale + oy) * canvas.width) + x * sampleScale + ox) * 4;
-          samples[sampleOffset] = source[sourceOffset];
-          samples[sampleOffset + 1] = source[sourceOffset + 1];
-          samples[sampleOffset + 2] = source[sourceOffset + 2];
-          sampleOffset += 3;
-        }
-      }
-      const color = selectDetailPreservingColor(samples);
-      const outputOffset = (y * width + x) * 4;
-      output[outputOffset] = color[0];
-      output[outputOffset + 1] = color[1];
-      output[outputOffset + 2] = color[2];
-      output[outputOffset + 3] = 255;
-    }
-  }
-  return output;
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  return enhanceGridDetails(pixels, width, height);
 }
