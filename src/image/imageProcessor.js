@@ -1,5 +1,3 @@
-import { enhanceGridDetails } from './detailSampler.js';
-
 function applySharpen(imageData, amount) {
   if (amount <= 0) return imageData;
   const { data, width, height } = imageData;
@@ -53,18 +51,16 @@ export function createAdjustedCanvas(image, transform, adjustments, maxDimension
 
 export function getGridPixels(sourceCanvas, width, height) {
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = width; canvas.height = height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
   const sourceRatio = sourceCanvas.width / sourceCanvas.height;
   const targetRatio = width / height;
   let sx = 0, sy = 0, sw = sourceCanvas.width, sh = sourceCanvas.height;
   if (sourceRatio > targetRatio) { sw = sourceCanvas.height * targetRatio; sx = (sourceCanvas.width - sw) / 2; }
   else { sh = sourceCanvas.width / targetRatio; sy = (sourceCanvas.height - sh) / 2; }
-  ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  return enhanceGridDetails(pixels, width, height);
+  ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, width, height);
+  return ctx.getImageData(0, 0, width, height).data;
 }

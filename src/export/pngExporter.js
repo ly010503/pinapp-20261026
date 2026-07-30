@@ -2,6 +2,7 @@ import {
   COPYRIGHT_NOTICE,
   drawEffect,
   drawPatternSheet,
+  getSheetLayout,
 } from '../canvas/patternPainter.js';
 
 function download(blob, name) {
@@ -14,14 +15,28 @@ function download(blob, name) {
 }
 
 export function preferredCell(pattern, type) {
-  if (type === 'effect') return pattern.width <= 30 ? 48 : pattern.width <= 40 ? 42 : pattern.width <= 60 ? 34 : 30;
-  return pattern.width <= 30 ? 64 : pattern.width <= 40 ? 54 : pattern.width <= 60 ? 44 : 36;
+  const longestSide = Math.max(pattern.width, pattern.height || pattern.width);
+  if (type === 'effect') {
+    return longestSide <= 30 ? 48 : longestSide <= 40 ? 42 : longestSide <= 60 ? 34 : 30;
+  }
+  if (longestSide <= 30) return 64;
+  if (longestSide <= 40) return 56;
+  if (longestSide <= 60) return 48;
+  if (longestSide <= 104) return 42;
+  if (longestSide <= 150) return 44;
+  return 48;
 }
 
-function safeCell(pattern, statistics, type) {
+export function selectExportCell(pattern, statistics, type, deviceMemory = 4) {
   const preferred = preferredCell(pattern, type);
-  const memory = navigator.deviceMemory || 4;
-  const maxPixels = memory <= 2 ? 14_000_000 : memory <= 4 ? 24_000_000 : 40_000_000;
+  const maxPixels = deviceMemory <= 2
+    ? 48_000_000
+    : deviceMemory <= 4
+      ? 96_000_000
+      : deviceMemory <= 8
+        ? 144_000_000
+        : 196_000_000;
+  const maxSide = 16_000;
   let cell = preferred;
   while (cell >= 12) {
     if (type === 'effect') {
@@ -29,17 +44,27 @@ function safeCell(pattern, statistics, type) {
       const footer = Math.max(80, Math.round(cell * 6));
       const width = pattern.width * cell + padding * 2;
       const height = pattern.height * cell + padding * 2 + footer;
-      if (width * height <= maxPixels) return { cell, reduced: cell < preferred };
+      if (width <= maxSide && height <= maxSide && width * height <= maxPixels) {
+        return { cell, reduced: cell < preferred };
+      }
     } else {
-      const width = pattern.width * cell + cell * 6;
-      const columns = Math.max(3, Math.floor(width / Math.max(70, cell * 4)));
-      const legendRows = Math.ceil(statistics.length / columns);
-      const height = pattern.height * cell + legendRows * Math.max(44, cell * 2.2) + cell * 12;
-      if (width * height <= maxPixels) return { cell, reduced: cell < preferred };
+      const layout = getSheetLayout(pattern, statistics, cell);
+      if (
+        layout.paperWidth <= maxSide
+        && layout.paperHeight <= maxSide
+        && layout.paperWidth * layout.paperHeight <= maxPixels
+      ) {
+        return { cell, reduced: cell < preferred };
+      }
     }
     cell -= 2;
   }
   return { cell: 12, reduced: true };
+}
+
+function safeCell(pattern, statistics, type) {
+  const memory = typeof navigator === 'undefined' ? 4 : navigator.deviceMemory || 4;
+  return selectExportCell(pattern, statistics, type, memory);
 }
 
 async function toBlob(canvas) {

@@ -1,12 +1,17 @@
-import { deltaE2000, rgbToLab } from '../color/colorSpace.js';
-import { findNearestPaletteIndex } from '../color/paletteSearch.js';
+import { deltaE76, rgbToLab } from '../color/colorSpace.js';
 import { choosePaletteIndices, shouldProtectAccent } from '../pattern/paletteLimit.js';
 import { createOutlineMask, findOutlinePaletteIndex } from '../pattern/outlineProtection.js';
 
 function postProgress(progress, text) { self.postMessage({ type: 'progress', progress, text }); }
 
 function nearest(lab, palette, allowed = null) {
-  return findNearestPaletteIndex(lab, palette, allowed);
+  let best = allowed ? allowed[0] : 0, distance = Infinity;
+  const candidates = allowed || palette.map((_, index) => index);
+  for (const index of candidates) {
+    const current = deltaE76(lab, palette[index].lab);
+    if (current < distance) { distance = current; best = index; }
+  }
+  return best;
 }
 
 function cleanIsolated(indices, width, height, palette) {
@@ -22,7 +27,7 @@ function cleanIsolated(indices, width, height, palette) {
     if (dominant && dominant[1] >= 5 && dominant[0] !== current && (counts.get(current) || 0) <= 1) {
       const currentColor = palette[current], dominantColor = palette[dominant[0]];
       const protectedAccent = shouldProtectAccent(currentColor, dominantColor);
-      if (!protectedAccent && deltaE2000(currentColor.lab, dominantColor.lab) < 25) result[pos] = dominant[0];
+      if (!protectedAccent && deltaE76(currentColor.lab, dominantColor.lab) < 32) result[pos] = dominant[0];
     }
   }
   return result;
@@ -56,7 +61,7 @@ self.onmessage = ({ data }) => {
     if (mergeColors) {
       const merged = [];
       for (const index of allowed) {
-        const similar = merged.some((kept) => deltaE2000(palette[index].lab, palette[kept].lab) < 3.2);
+        const similar = merged.some((kept) => deltaE76(palette[index].lab, palette[kept].lab) < 4.5);
         if (!similar) merged.push(index);
       }
       allowed = merged;
