@@ -27,7 +27,10 @@ import {
   replacePatternCells,
   replacePatternColor,
 } from './pattern/colorReplacement.js';
-import { getRectangularSelectionPositions } from './pattern/cellSelection.js';
+import {
+  getPatternTapIntent,
+  getRectangularSelectionPositions,
+} from './pattern/cellSelection.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
 import {
   DEFAULT_TILED_WATERMARK,
@@ -301,12 +304,21 @@ function selectCellRange(cell) {
 }
 
 function handlePatternCellTap(cell, { shiftKey = false, ctrlKey = false, metaKey = false } = {}) {
-  if (shiftKey) {
+  const intent = getPatternTapIntent(
+    state.selectedCellPositions.size,
+    state.selectedCellPositions.has(cell.position),
+    { shiftKey, ctrlKey, metaKey },
+  );
+  if (intent === 'range-select') {
     selectCellRange(cell);
     return;
   }
-  if (ctrlKey || metaKey) {
+  if (intent === 'toggle-select') {
     toggleSelectedCell(cell);
+    return;
+  }
+  if (intent === 'replace-selection') {
+    openReplaceSelectedCellsDialog();
     return;
   }
   clearSelectedCells();

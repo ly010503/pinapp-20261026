@@ -27,3 +27,14 @@ export function getRectangularSelectionPositions(width, height, startPosition, e
   }
   return positions;
 }
+
+export function getPatternTapIntent(selectedCount, isSelectedCell, {
+  shiftKey = false,
+  ctrlKey = false,
+  metaKey = false,
+} = {}) {
+  if (shiftKey) return 'range-select';
+  if (ctrlKey || metaKey) return 'toggle-select';
+  if (selectedCount > 0 && isSelectedCell) return 'replace-selection';
+  return 'replace-cell';
+}
