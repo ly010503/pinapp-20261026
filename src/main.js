@@ -22,7 +22,12 @@ import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
 import { calculateStatistics, countPatternBeans, statisticsTotal } from './pattern/statistics.js';
 import { createWhiteBackgroundMask } from './pattern/backgroundMask.js';
-import { replacePatternCell, replacePatternColor } from './pattern/colorReplacement.js';
+import {
+  replacePatternCell,
+  replacePatternCells,
+  replacePatternColor,
+} from './pattern/colorReplacement.js';
+import { getRectangularSelectionPositions } from './pattern/cellSelection.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
 import {
   DEFAULT_TILED_WATERMARK,
@@ -43,12 +48,13 @@ let showAllColors = false;
 let replacementSourceIndex = null;
 let replacementTargetIndex = null;
 let replacementCell = null;
+let replacementCells = null;
 let recentReplacementCodes = loadRecentReplacementCodes();
 const renderer = new ResultCanvasRenderer(
   $('#resultCanvas'),
   $('#resultStage'),
   () => state,
-  (cell) => openReplaceCellDialog(cell),
+  (cell, modifiers) => handlePatternCellTap(cell, modifiers),
 );
 
 function formatBytes(bytes) {
@@ -244,6 +250,69 @@ function renderStatistics() {
   renderColorList();
 }
 
+function updateCellSelectionUi() {
+  const count = state.selectedCellPositions.size;
+  $('#selectedCellCount').textContent = number.format(count);
+  $('#multiSelectBar').hidden = !count || state.previewMode !== 'pattern';
+}
+
+function clearSelectedCells({ redraw = true } = {}) {
+  if (!state.selectedCellPositions.size && state.selectionAnchorPosition === null) return;
+  state.selectedCellPositions.clear();
+  state.selectionAnchorPosition = null;
+  updateCellSelectionUi();
+  if (redraw) renderer.rebuild();
+}
+
+function toggleSelectedCell(cell) {
+  if (state.selectedCellPositions.has(cell.position)) {
+    state.selectedCellPositions.delete(cell.position);
+  } else {
+    state.selectedCellPositions.add(cell.position);
+  }
+  state.selectionAnchorPosition = state.selectedCellPositions.size ? cell.position : null;
+  state.highlightedCode = null;
+  renderColorList();
+  updateCellSelectionUi();
+  renderer.rebuild();
+}
+
+function selectCellRange(cell) {
+  const anchor = state.selectionAnchorPosition;
+  if (!Number.isInteger(anchor)) {
+    state.selectedCellPositions.clear();
+    state.selectedCellPositions.add(cell.position);
+    state.selectionAnchorPosition = cell.position;
+    notify('已设置范围起点，请按住 Shift 点击终点');
+  } else {
+    const positions = getRectangularSelectionPositions(
+      state.currentPattern.width,
+      state.currentPattern.height,
+      anchor,
+      cell.position,
+    );
+    state.selectedCellPositions.clear();
+    positions.forEach((position) => state.selectedCellPositions.add(position));
+  }
+  state.highlightedCode = null;
+  renderColorList();
+  updateCellSelectionUi();
+  renderer.rebuild();
+}
+
+function handlePatternCellTap(cell, { shiftKey = false, ctrlKey = false, metaKey = false } = {}) {
+  if (shiftKey) {
+    selectCellRange(cell);
+    return;
+  }
+  if (ctrlKey || metaKey) {
+    toggleSelectedCell(cell);
+    return;
+  }
+  clearSelectedCells();
+  openReplaceCellDialog(cell);
+}
+
 async function generate() {
   if (!state.image) return notify('请先上传一张图片', 'error');
   if (state.generating) return;
@@ -274,7 +343,10 @@ async function generate() {
     if (statisticsTotal(statistics) !== countPatternBeans(pattern.indices, state.palette, pattern.backgroundMask)) {
       throw new Error('颜色统计校验失败，请重新生成');
     }
+    state.selectedCellPositions.clear();
+    state.selectionAnchorPosition = null;
     Object.assign(state, { currentPattern: pattern, statistics, highlightedCode: null, dirty: false, previewMode: 'effect' });
+    updateCellSelectionUi();
     showAllColors = false;
     $('#dirtyNotice').hidden = true;
     $('#resultSection').hidden = false;
@@ -309,6 +381,7 @@ function changeTransform(action) {
 }
 
 function setMode(mode) {
+  if (mode !== 'pattern') clearSelectedCells({ redraw: false });
   state.previewMode = mode;
   state.viewport = { zoom: 1, x: 0, y: 0 };
   $$('.mode-switch button').forEach((button) => {
@@ -316,6 +389,7 @@ function setMode(mode) {
     button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active));
   });
   renderer.rebuild(); renderer.fit();
+  updateCellSelectionUi();
   if (mode === 'pattern' && window.matchMedia('(max-width: 760px)').matches) {
     const rect = $('#resultStage').getBoundingClientRect();
     renderer.zoomAt(1.7, rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -343,7 +417,9 @@ function getExportWatermarkText() {
 function updateReplacementTarget() {
   const target = state.palette[replacementTargetIndex];
   $('#replaceTargetText').textContent = target ? getColorDisplayLabel(target) : '请在下方选择一种颜色';
-  $('#confirmReplaceColor').disabled = !target || replacementTargetIndex === replacementSourceIndex;
+  const batchReplacement = Boolean(replacementCells?.length);
+  $('#confirmReplaceColor').disabled = !target
+    || (!batchReplacement && replacementTargetIndex === replacementSourceIndex);
 }
 
 function renderReplacementPalette() {
@@ -399,6 +475,7 @@ function openReplaceColorDialog() {
   replacementSourceIndex = source.index;
   replacementTargetIndex = null;
   replacementCell = null;
+  replacementCells = null;
   $('#replaceDialogTitle').textContent = '替换整种颜色';
   $('#replaceCurrentLabel').textContent = '当前选中的颜色';
   $('#confirmReplaceColor').textContent = '确认替换全部同色格子';
@@ -420,6 +497,7 @@ function openReplaceCellDialog(cell) {
   replacementSourceIndex = source.index;
   replacementTargetIndex = null;
   replacementCell = cell;
+  replacementCells = null;
   $('#replaceDialogTitle').textContent = '替换这一颗豆';
   $('#replaceCurrentLabel').textContent = `第 ${cell.x + 1} 列 · 第 ${cell.y + 1} 行`;
   $('#confirmReplaceColor').textContent = '确认只替换这一格';
@@ -433,16 +511,44 @@ function openReplaceCellDialog(cell) {
   $('#replaceColorDialog').showModal();
 }
 
+function openReplaceSelectedCellsDialog() {
+  if (state.previewMode !== 'pattern' || !state.currentPattern) return;
+  const positions = [...state.selectedCellPositions].sort((a, b) => a - b);
+  if (!positions.length) return notify('请先按住 Ctrl 逐格选择，或用 Shift 框选格子', 'error');
+
+  replacementSourceIndex = null;
+  replacementTargetIndex = null;
+  replacementCell = null;
+  replacementCells = positions;
+  $('#replaceDialogTitle').textContent = '批量替换选中格子';
+  $('#replaceCurrentLabel').textContent = '当前多选';
+  $('#confirmReplaceColor').textContent = `确认替换这 ${number.format(positions.length)} 格`;
+  $('#replaceCurrentSwatch').style.backgroundColor = '#8F7BD8';
+  $('#replaceCurrentCode').textContent = `${number.format(positions.length)}格`;
+  $('#replaceCurrentMeta').textContent = '所选格子可以来自不同颜色，将统一换成目标颜色';
+  $('#replacementSearch').value = '';
+  updateReplacementTarget();
+  renderReplacementPalette();
+  $('#replacementPalette').scrollTop = 0;
+  $('#replaceColorDialog').showModal();
+}
+
 function applyColorReplacement() {
-  const source = state.palette[replacementSourceIndex];
   const target = state.palette[replacementTargetIndex];
-  if (!source || !target || source.index === target.index) return notify('请选择一种不同的替换颜色', 'error');
+  const batchReplacement = Boolean(replacementCells?.length);
+  const source = Number.isInteger(replacementSourceIndex) ? state.palette[replacementSourceIndex] : null;
+  if (!target || (!batchReplacement && (!source || source.index === target.index))) {
+    return notify('请选择一种不同的替换颜色', 'error');
+  }
 
   const cellReplacement = Boolean(replacementCell);
-  const replaced = cellReplacement
-    ? Number(replacePatternCell(state.currentPattern, replacementCell.position, target.index))
-    : replacePatternColor(state.currentPattern, source.index, target.index);
-  if (!replaced) return notify('当前格子的颜色没有发生变化', 'error');
+  const selectedCount = replacementCells?.length || 0;
+  const replaced = batchReplacement
+    ? replacePatternCells(state.currentPattern, replacementCells, target.index)
+    : cellReplacement
+      ? Number(replacePatternCell(state.currentPattern, replacementCell.position, target.index))
+      : replacePatternColor(state.currentPattern, source.index, target.index);
+  if (!replaced) return notify(batchReplacement ? '所选格子已经是这个颜色' : '当前格子的颜色没有发生变化', 'error');
 
   state.currentPattern.backgroundMask = createWhiteBackgroundMask(
     state.currentPattern,
@@ -461,14 +567,22 @@ function applyColorReplacement() {
   )) {
     return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
   }
-  state.highlightedCode = cellReplacement || target.excludeFromStatistics ? null : target.code;
+  state.highlightedCode = batchReplacement || cellReplacement || target.excludeFromStatistics ? null : target.code;
   if (!target.manualOnly) rememberReplacementColor(target.code);
+  if (batchReplacement) {
+    state.selectedCellPositions.clear();
+    state.selectionAnchorPosition = null;
+    replacementCells = null;
+    updateCellSelectionUi();
+  }
   showAllColors = state.statistics.length <= 8 ? false : showAllColors;
   renderStatistics();
   renderer.rebuild();
   $('#replaceColorDialog').close();
   notify(
-    cellReplacement
+    batchReplacement
+      ? `已将选中的 ${number.format(selectedCount)} 格统一换成 ${getColorDisplayLabel(target)}`
+      : cellReplacement
       ? `第 ${replacementCell.x + 1} 列、第 ${replacementCell.y + 1} 行已换成 ${getColorDisplayLabel(target)}`
       : `已将 ${getColorDisplayCode(source)} 替换为 ${getColorDisplayLabel(target)}，共 ${number.format(replaced)}格`,
     'success',
@@ -578,6 +692,8 @@ function bindResults() {
   $('#toggleColors').addEventListener('click', () => { showAllColors = !showAllColors; renderColorList(); });
   $('#copyColors').addEventListener('click', copyList);
   $('#replaceSelectedColor').addEventListener('click', openReplaceColorDialog);
+  $('#replaceSelectedCells').addEventListener('click', openReplaceSelectedCellsDialog);
+  $('#clearSelectedCells').addEventListener('click', () => clearSelectedCells());
   $('#closeReplaceColor').addEventListener('click', () => $('#replaceColorDialog').close());
   $('#replacementSearch').addEventListener('input', renderReplacementPalette);
   $('#replacementPalette').addEventListener('click', (event) => {
@@ -627,8 +743,12 @@ $$('[data-transform]').forEach((button) => button.addEventListener('click', () =
 $('#generateButton').addEventListener('click', generate);
 window.addEventListener('resize', () => { if (state.image) drawSourcePreview(); });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && state.highlightedCode && !$('#replaceColorDialog').open) {
-    state.highlightedCode = null; renderColorList(); renderer.rebuild();
+  if (event.key === 'Escape' && !$('#replaceColorDialog').open) {
+    if (state.selectedCellPositions.size) {
+      clearSelectedCells();
+    } else if (state.highlightedCode) {
+      state.highlightedCode = null; renderColorList(); renderer.rebuild();
+    }
   }
 });
 renderer.resize();

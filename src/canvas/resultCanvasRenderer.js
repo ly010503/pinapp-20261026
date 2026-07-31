@@ -22,7 +22,11 @@ export class ResultCanvasRenderer {
       drawEffect(ctx, pattern, state.palette, { cell, highlightedCode: state.highlightedCode });
     } else {
       const cell = pattern.width <= 30 ? 22 : pattern.width <= 40 ? 20 : pattern.width <= 60 ? 18 : 16;
-      drawPatternSheet(ctx, pattern, state.palette, state.statistics, { cell, highlightedCode: state.highlightedCode });
+      drawPatternSheet(ctx, pattern, state.palette, state.statistics, {
+        cell,
+        highlightedCode: state.highlightedCode,
+        selectedPositions: state.selectedCellPositions,
+      });
     }
     this.draw();
   }
@@ -74,7 +78,15 @@ export class ResultCanvasRenderer {
     return hitTestPatternCell(documentX, documentY, pattern, layout, cell);
   }
 
-  queueTap(clientX, clientY) {
+  queueTap(clientX, clientY, { shiftKey = false, ctrlKey = false, metaKey = false } = {}) {
+    if (shiftKey || ctrlKey || metaKey) {
+      clearTimeout(this.tapTimer);
+      this.tapTimer = null;
+      this.lastTap = null;
+      const cell = this.hitTestCell(clientX, clientY);
+      if (cell) this.onCellTap?.(cell, { shiftKey, ctrlKey, metaKey });
+      return;
+    }
     const now = Date.now();
     if (this.lastTap
       && now - this.lastTap.time < 300
@@ -93,7 +105,7 @@ export class ResultCanvasRenderer {
       const cell = this.hitTestCell(clientX, clientY);
       this.lastTap = null;
       this.tapTimer = null;
-      if (cell) this.onCellTap?.(cell);
+      if (cell) this.onCellTap?.(cell, { shiftKey: false, ctrlKey: false, metaKey: false });
     }, 300);
   }
 
@@ -106,7 +118,15 @@ export class ResultCanvasRenderer {
       const viewport = this.getState().viewport;
       if (this.pointers.size === 1) {
         this.dragOrigin = { x: event.clientX, y: event.clientY, vx: viewport.x, vy: viewport.y };
-        this.tapCandidate = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+        this.tapCandidate = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          moved: false,
+          shiftKey: event.shiftKey,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+        };
       }
       if (this.pointers.size === 2) { this.tapCandidate = null; this.startPinch(); }
     });
@@ -130,7 +150,11 @@ export class ResultCanvasRenderer {
         && this.tapCandidate?.pointerId === event.pointerId
         && !this.tapCandidate.moved;
       this.pointers.delete(event.pointerId);
-      if (shouldTap) this.queueTap(event.clientX, event.clientY);
+      if (shouldTap) this.queueTap(event.clientX, event.clientY, {
+        shiftKey: this.tapCandidate.shiftKey || event.shiftKey,
+        ctrlKey: this.tapCandidate.ctrlKey || event.ctrlKey,
+        metaKey: this.tapCandidate.metaKey || event.metaKey,
+      });
       if (this.tapCandidate?.pointerId === event.pointerId) this.tapCandidate = null;
       if (this.pointers.size < 2) this.pinchOrigin = null;
       if (this.pointers.size === 1) {

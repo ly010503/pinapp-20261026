@@ -119,6 +119,7 @@ export function drawEffect(ctx, pattern, palette, {
 export function drawPatternSheet(ctx, pattern, palette, statistics, {
   cell = 14,
   highlightedCode = null,
+  selectedPositions = null,
   title = COPYRIGHT_NOTICE,
   mirrorX = false,
   tiledWatermarkText = '',
@@ -169,6 +170,23 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     fontSize: Math.max(20, Math.round(cell * 0.92)),
     opacity: 0.16,
   });
+
+  if (selectedPositions?.size) {
+    ctx.fillStyle = 'rgba(124, 96, 210, .2)';
+    ctx.strokeStyle = '#7657D6';
+    ctx.lineWidth = Math.max(2, Math.round(cell * 0.12));
+    for (const position of selectedPositions) {
+      if (!Number.isInteger(position) || position < 0 || position >= pattern.indices.length) continue;
+      const sourceX = position % pattern.width;
+      const x = mirrorX ? pattern.width - sourceX - 1 : sourceX;
+      const y = Math.floor(position / pattern.width);
+      const px = gridX + x * cell;
+      const py = gridY + y * cell;
+      ctx.fillRect(px, py, cell, cell);
+      const inset = Math.max(1, Math.round(ctx.lineWidth / 2));
+      ctx.strokeRect(px + inset, py + inset, cell - inset * 2, cell - inset * 2);
+    }
+  }
 
   ctx.strokeStyle = '#C9CDD5';
   ctx.lineWidth = enhancedLargePattern ? Math.max(1, Math.round(cell / 24)) : 1;

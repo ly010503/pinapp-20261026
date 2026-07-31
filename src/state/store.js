@@ -17,6 +17,8 @@ const state = {
   viewport: { zoom: 1, x: 0, y: 0 },
   statistics: [],
   highlightedCode: null,
+  selectedCellPositions: new Set(),
+  selectionAnchorPosition: null,
   generating: false,
   dirty: false,
   options: { reduceIsolated: true, mergeColors: true },

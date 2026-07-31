@@ -113,7 +113,14 @@
             <canvas id="resultCanvas" aria-label="拼豆图纸预览"></canvas>
             <button id="fullscreenButton" class="fullscreen-button" aria-label="全屏查看">⛶ 全屏</button>
           </div>
-          <p class="gesture-hint">轻点格子换色 · 鼠标右键快速留白 · 单指拖动 · 双指缩放</p>
+          <div id="multiSelectBar" class="multi-select-bar" hidden aria-live="polite">
+            <span>已选择 <strong id="selectedCellCount">0</strong> 格</span>
+            <div>
+              <button id="clearSelectedCells" type="button">清除</button>
+              <button id="replaceSelectedCells" type="button">批量换色</button>
+            </div>
+          </div>
+          <p class="gesture-hint">轻点单格换色 · Ctrl+点击逐格多选 · Shift+点击两点框选 · 鼠标右键快速留白</p>
         </div>
 
         <article class="card stats-card">
