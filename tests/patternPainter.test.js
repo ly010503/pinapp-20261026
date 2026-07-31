@@ -12,8 +12,9 @@ test('制作图使用 5×5 分组辅助线', () => {
   assert.deepEqual(getCoordinateValues(12), [1, 5, 10]);
 });
 
-test('高清制作图色号字体占格子一半以上', () => {
-  assert.equal(getCellCodeFontSize(48), 24);
-  assert.equal(getCellCodeFontSize(40), 20);
-  assert.ok(getCellCodeFontSize(48) > Math.floor(48 * 0.4));
+test('常用尺寸保持原字号，超过150格才使用大字号', () => {
+  assert.equal(getCellCodeFontSize(36), 14);
+  assert.equal(getCellCodeFontSize(48), 19);
+  assert.equal(getCellCodeFontSize(48, true), 24);
+  assert.ok(getCellCodeFontSize(48, true) > getCellCodeFontSize(48));
 });

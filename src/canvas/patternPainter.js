@@ -23,8 +23,10 @@ export function colorLuminance(rgb) {
   return r * 0.2126 + g * 0.7152 + b * 0.0722;
 }
 
-export function getCellCodeFontSize(cell) {
-  return Math.max(7, Math.floor(cell * 0.52));
+export function getCellCodeFontSize(cell, enhanced = false) {
+  return enhanced
+    ? Math.max(7, Math.floor(cell * 0.52))
+    : Math.max(6, Math.floor(cell * 0.4));
 }
 
 function roundRect(ctx, x, y, width, height, radius) {
@@ -121,6 +123,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   mirrorX = false,
   tiledWatermarkText = '',
 } = {}) {
+  const enhancedLargePattern = Math.max(pattern.width, pattern.height) > 150;
   const layout = getSheetLayout(pattern, statistics, cell);
   const { paperWidth, paperHeight, gridX, gridY, gridWidth, gridHeight } = layout;
   ctx.canvas.width = paperWidth; ctx.canvas.height = paperHeight;
@@ -167,7 +170,9 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     opacity: 0.16,
   });
 
-  ctx.strokeStyle = '#C9CDD5'; ctx.lineWidth = Math.max(1, Math.round(cell / 24)); ctx.beginPath();
+  ctx.strokeStyle = '#C9CDD5';
+  ctx.lineWidth = enhancedLargePattern ? Math.max(1, Math.round(cell / 24)) : 1;
+  ctx.beginPath();
   for (let x = 0; x <= pattern.width; x += 1) { const px = Math.round(gridX + x * cell) + 0.5; ctx.moveTo(px, gridY); ctx.lineTo(px, gridY + gridHeight); }
   for (let y = 0; y <= pattern.height; y += 1) { const py = Math.round(gridY + y * cell) + 0.5; ctx.moveTo(gridX, py); ctx.lineTo(gridX + gridWidth, py); }
   ctx.stroke();
@@ -179,7 +184,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   ctx.strokeStyle = '#706A88'; ctx.lineWidth = Math.max(2, Math.round(cell / 6));
   ctx.strokeRect(Math.round(gridX), Math.round(gridY), gridWidth, gridHeight);
 
-  ctx.font = `800 ${getCellCodeFontSize(cell)}px "Arial Narrow", Arial, sans-serif`;
+  ctx.font = `${enhancedLargePattern ? 800 : 700} ${getCellCodeFontSize(cell, enhancedLargePattern)}px "Arial Narrow", Arial, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
     const position = getPatternPosition(pattern.width, x, y, mirrorX);
@@ -188,7 +193,9 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     if (color.hideCode) continue;
     const dark = colorLuminance(color.rgb) < 0.36;
     const tx = gridX + (x + 0.5) * cell, ty = gridY + (y + 0.52) * cell;
-    ctx.lineWidth = Math.max(0.9, cell * 0.05);
+    ctx.lineWidth = enhancedLargePattern
+      ? Math.max(0.9, cell * 0.05)
+      : Math.max(0.75, cell * 0.045);
     ctx.strokeStyle = dark ? 'rgba(0,0,0,.38)' : 'rgba(255,255,255,.76)';
     ctx.fillStyle = dark ? '#FFFFFF' : '#25232B';
     ctx.strokeText(color.code, tx, ty, cell - 2);

@@ -17,14 +17,10 @@ function download(blob, name) {
 export function preferredCell(pattern, type) {
   const longestSide = Math.max(pattern.width, pattern.height || pattern.width);
   if (type === 'effect') {
-    return longestSide <= 30 ? 48 : longestSide <= 40 ? 42 : longestSide <= 60 ? 34 : 30;
+    return pattern.width <= 30 ? 48 : pattern.width <= 40 ? 42 : pattern.width <= 60 ? 34 : 30;
   }
-  if (longestSide <= 30) return 64;
-  if (longestSide <= 40) return 56;
-  if (longestSide <= 60) return 48;
-  if (longestSide <= 104) return 42;
-  if (longestSide <= 150) return 44;
-  return 48;
+  if (longestSide > 150) return 48;
+  return pattern.width <= 30 ? 64 : pattern.width <= 40 ? 54 : pattern.width <= 60 ? 44 : 36;
 }
 
 export function selectExportCell(pattern, statistics, type, deviceMemory = 4) {
