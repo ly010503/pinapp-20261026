@@ -42,6 +42,11 @@ import {
   normalizeWatermarkText,
 } from './canvas/tiledWatermark.js';
 import { exportEffectPng, exportPatternPng } from './export/pngExporter.js';
+import {
+  createProjectDocument,
+  parseProjectDocument,
+  serializeProjectDocument,
+} from './project/projectFile.js';
 import { notify } from './ui/notifications.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -49,6 +54,8 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 const number = new Intl.NumberFormat('zh-CN');
 const RECENT_COLORS_KEY = 'perler-recent-replacement-colors';
 const PATTERN_UNDO_LIMIT = 20;
+const MAX_PROJECT_FILE_BYTES = 64 * 1024 * 1024;
+const MAX_PROJECT_TEXT_LENGTH = 70 * 1024 * 1024;
 const state = store.get();
 state.palette = preparePalette([...paletteJson, MANUAL_BLANK_COLOR]);
 
@@ -185,6 +192,237 @@ async function decodeImage(file) {
   return { image, url };
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('原始图片读取失败，请重新上传后再保存工程'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function createProjectBlob(text) {
+  if (typeof CompressionStream === 'function') {
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+    const compressed = await new Response(stream).blob();
+    return new Blob([compressed], { type: 'application/x-perler-project' });
+  }
+  return new Blob([text], { type: 'application/json' });
+}
+
+async function readProjectText(file) {
+  if (file.size > MAX_PROJECT_FILE_BYTES) throw new Error('工程文件超过 64MB，无法打开');
+  const header = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  const compressed = header[0] === 0x1f && header[1] === 0x8b;
+  if (compressed && typeof DecompressionStream !== 'function') {
+    throw new Error('当前浏览器版本过旧，无法打开压缩工程文件');
+  }
+  const text = compressed
+    ? await new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text()
+    : await file.text();
+  if (text.length > MAX_PROJECT_TEXT_LENGTH) throw new Error('工程文件内容过大，无法打开');
+  return text;
+}
+
+async function projectImageToFile(image) {
+  const response = await fetch(image.dataUrl);
+  const blob = await response.blob();
+  if (blob.size !== image.size || blob.type !== image.type) throw new Error('工程中的原始图片校验失败');
+  return new File([blob], image.name, { type: image.type, lastModified: image.lastModified });
+}
+
+function getProjectFileName() {
+  const sourceName = state.file?.name || '拼豆工程';
+  const base = sourceName.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').trim() || '拼豆工程';
+  return `${base}.perlerproj`;
+}
+
+function downloadProjectBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function setProjectButtonsDisabled(disabled) {
+  $('#saveProjectButton').disabled = disabled;
+  $('#saveProjectResultButton').disabled = disabled;
+}
+
+async function saveProject() {
+  if (!state.image || !state.file) return notify('请先上传图片或打开一个工程', 'error');
+  if (state.generating) return notify('图纸正在生成，请完成后再保存工程');
+  setProjectButtonsDisabled(true);
+  try {
+    const imageDataUrl = await fileToDataUrl(state.file);
+    const document = createProjectDocument({
+      image: {
+        name: state.file.name,
+        type: state.file.type,
+        size: state.file.size,
+        width: state.imageInfo.width,
+        height: state.imageInfo.height,
+        lastModified: state.file.lastModified,
+        dataUrl: imageDataUrl,
+      },
+      settings: {
+        crop: state.crop,
+        transform: state.transform,
+        adjustments: state.adjustments,
+        colorStyle: state.colorStyle,
+        maxColors: state.maxColors,
+        currentSize: state.currentSize,
+        dirty: state.dirty,
+        options: state.options,
+      },
+      pattern: state.currentPattern,
+      preferences: {
+        previewMode: state.previewMode,
+        recentColors: recentReplacementCodes,
+        watermark: {
+          enabled: $('#tiledWatermarkEnabled').checked,
+          text: normalizeWatermarkText($('#tiledWatermarkText').value),
+        },
+      },
+      paletteCodes: state.palette.map((color) => color.code),
+    });
+    const blob = await createProjectBlob(serializeProjectDocument(document));
+    downloadProjectBlob(blob, getProjectFileName());
+    notify('工程已保存，可以发到其他电脑继续制作', 'success', 5000);
+  } catch (error) {
+    notify(error.message || '工程保存失败，请重试', 'error', 5000);
+  } finally {
+    setProjectButtonsDisabled(false);
+  }
+}
+
+function syncRestoredChoices() {
+  const sizeButton = $$('.size-card').find((button) => (
+    button.dataset.id !== 'custom'
+    && Number(button.dataset.width) === state.currentSize.width
+    && Number(button.dataset.height) === state.currentSize.height
+  ));
+  const selectedSize = sizeButton || $('[data-id="custom"]');
+  if (!sizeButton) {
+    $('#customWidth').value = state.currentSize.width;
+    $('#customHeight').value = state.currentSize.height;
+    selectedSize.querySelector('b').textContent = `${state.currentSize.width} × ${state.currentSize.height}格`;
+    selectedSize.querySelectorAll('span')[1].textContent = `总计 ${number.format(state.currentSize.width * state.currentSize.height)}颗`;
+  }
+  setChoiceActive($('#sizeCards'), selectedSize);
+  const colorButton = $(`[data-colors="${state.maxColors}"]`);
+  if (colorButton) setChoiceActive($('#colorCards'), colorButton);
+  const styleButton = $(`[data-color-style="${state.colorStyle}"]`);
+  if (styleButton) setChoiceActive($('#colorStyleCards'), styleButton);
+}
+
+function syncWatermarkSetting() {
+  const watermarkEnabled = $('#tiledWatermarkEnabled');
+  const watermarkText = $('#tiledWatermarkText');
+  watermarkText.disabled = !watermarkEnabled.checked;
+  $('#exportWatermarkCard').classList.toggle('disabled', !watermarkEnabled.checked);
+}
+
+async function openProject(file) {
+  if (!file) return;
+  if (state.generating) return notify('图纸正在生成，请稍后再打开工程');
+  let decoded;
+  try {
+    const text = await readProjectText(file);
+    const project = parseProjectDocument(text, {
+      paletteCodes: state.palette.map((color) => color.code),
+    });
+    if (state.image && !window.confirm('打开工程会替换当前正在制作的内容，确定继续吗？')) return;
+    const imageFile = await projectImageToFile(project.image);
+    decoded = await decodeImage(imageFile);
+    if (decoded.image.naturalWidth !== project.image.width || decoded.image.naturalHeight !== project.image.height) {
+      throw new Error('工程中的原始图片尺寸校验失败');
+    }
+    let statistics = [];
+    if (project.pattern) {
+      project.pattern.backgroundMask = createWhiteBackgroundMask(
+        project.pattern,
+        state.palette,
+        project.pattern.sourcePixels,
+      );
+      statistics = calculateStatistics(project.pattern.indices, state.palette, project.pattern.backgroundMask);
+      if (statisticsTotal(statistics) !== countPatternBeans(
+        project.pattern.indices,
+        state.palette,
+        project.pattern.backgroundMask,
+      )) throw new Error('工程中的颜色统计校验失败');
+    }
+
+    if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
+    generationVersion += 1;
+    Object.assign(state, {
+      image: decoded.image,
+      imageUrl: decoded.url,
+      file: imageFile,
+      imageInfo: { width: project.image.width, height: project.image.height, size: project.image.size },
+      crop: project.settings.crop,
+      transform: project.settings.transform,
+      adjustments: project.settings.adjustments,
+      colorStyle: project.settings.colorStyle,
+      maxColors: project.settings.maxColors,
+      currentSize: project.settings.currentSize,
+      currentPattern: project.pattern,
+      previewMode: project.preferences.previewMode,
+      viewport: { zoom: 1, x: 0, y: 0 },
+      statistics,
+      highlightedCode: null,
+      selectionAnchorPosition: null,
+      dirty: project.settings.dirty,
+      options: project.settings.options,
+    });
+    state.selectedCellPositions.clear();
+    state.patternUndoHistory.length = 0;
+    recentReplacementCodes = project.preferences.recentColors;
+    try { localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify(recentReplacementCodes)); } catch {}
+
+    $('#uploadPrompt').hidden = true;
+    $('#uploadedSummary').hidden = false;
+    $('#uploadThumbnail').src = decoded.url;
+    $('#uploadedName').textContent = project.image.name;
+    $('#uploadedMeta').textContent = `${project.image.width} × ${project.image.height} · ${formatBytes(project.image.size)}`;
+    $('#settingsArea').hidden = false;
+    $('#welcomeCard').hidden = true;
+    $('#sourceCard').hidden = false;
+    $('#cropBadge').hidden = !state.crop;
+    $('#dirtyNotice').hidden = !state.dirty;
+    $('#dirtyNotice').textContent = '设置已修改，请重新生成图纸';
+    $('#generateButton').lastChild.textContent = state.currentPattern ? ' 重新生成拼豆图纸' : ' 生成我的拼豆图纸';
+    $('#resultSection').hidden = !state.currentPattern;
+    $('#tiledWatermarkEnabled').checked = project.preferences.watermark.enabled;
+    $('#tiledWatermarkText').value = project.preferences.watermark.text || DEFAULT_TILED_WATERMARK;
+    syncWatermarkSetting();
+    syncRestoredChoices();
+    setProjectButtonsDisabled(false);
+    showAllColors = false;
+    updateCellSelectionUi();
+    $$('.mode-switch button').forEach((button) => {
+      const active = button.dataset.mode === state.previewMode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+    requestAnimationFrame(drawSourcePreview);
+    if (state.currentPattern) {
+      renderStatistics();
+      renderer.rebuild();
+      renderer.fit();
+      requestAnimationFrame(() => $('#resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+    notify('工程已打开，可以从保存的位置继续制作', 'success', 5000);
+  } catch (error) {
+    if (decoded?.url) URL.revokeObjectURL(decoded.url);
+    notify(error.message || '工程文件打开失败，请确认文件完整', 'error', 6000);
+  }
+}
+
 async function loadFile(file) {
   if (!file) return;
   if (!SUPPORTED_TYPES.includes(file.type)) return notify('请选择 JPG、PNG 或 WebP 图片', 'error');
@@ -215,6 +453,7 @@ async function loadFile(file) {
     $('#cropBadge').hidden = true;
     $('#dirtyNotice').hidden = true;
     $('#resultSection').hidden = true;
+    setProjectButtonsDisabled(false);
     requestAnimationFrame(drawSourcePreview);
     notify('图片已读取，只会在本地处理', 'success');
   } catch (error) {
@@ -668,6 +907,18 @@ function bindUpload() {
   zone.addEventListener('drop', (event) => loadFile(event.dataTransfer.files[0]));
 }
 
+function bindProjectFiles() {
+  const input = $('#projectFileInput');
+  $('#openProjectButton').addEventListener('click', () => input.click());
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    input.value = '';
+    await openProject(file);
+  });
+  $('#saveProjectButton').addEventListener('click', saveProject);
+  $('#saveProjectResultButton').addEventListener('click', saveProject);
+}
+
 function bindChoices() {
   $('#sizeCards').addEventListener('click', (event) => {
     const button = event.target.closest('.size-card'); if (!button) return;
@@ -715,10 +966,6 @@ function bindDialogs() {
 function bindResults() {
   const watermarkEnabled = $('#tiledWatermarkEnabled');
   const watermarkText = $('#tiledWatermarkText');
-  const syncWatermarkSetting = () => {
-    watermarkText.disabled = !watermarkEnabled.checked;
-    $('#exportWatermarkCard').classList.toggle('disabled', !watermarkEnabled.checked);
-  };
   watermarkText.value = DEFAULT_TILED_WATERMARK;
   watermarkEnabled.addEventListener('change', syncWatermarkSetting);
   syncWatermarkSetting();
@@ -773,7 +1020,7 @@ function bindResults() {
   });
 }
 
-buildChoices(); bindUpload(); bindChoices(); bindDialogs(); bindResults();
+buildChoices(); bindUpload(); bindProjectFiles(); bindChoices(); bindDialogs(); bindResults();
 $$('[data-transform]').forEach((button) => button.addEventListener('click', () => changeTransform(button.dataset.transform)));
 $('#generateButton').addEventListener('click', generate);
 window.addEventListener('resize', () => { if (state.image) drawSourcePreview(); });

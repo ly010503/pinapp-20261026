@@ -19,6 +19,19 @@
     </header>
 
     <main class="page-shell">
+      <section class="project-toolbar" aria-label="工程文件">
+        <div>
+          <span class="eyebrow">跨电脑接着做</span>
+          <strong>保存或打开工程</strong>
+          <small>工程包含原图、设置和当前图纸，只在本地读取与保存</small>
+        </div>
+        <div class="project-toolbar-actions">
+          <button id="openProjectButton" type="button">打开工程</button>
+          <button id="saveProjectButton" type="button" disabled>保存工程</button>
+          <input id="projectFileInput" type="file" accept=".perlerproj,application/json,application/gzip" hidden />
+        </div>
+      </section>
+
       <section class="creator-layout" aria-label="制作拼豆图纸">
         <div class="setup-column">
           <article class="card upload-card">
@@ -154,6 +167,7 @@
           <button id="saveEffect" class="secondary-save"><span>▧</span>保存高清效果图</button>
           <button id="savePattern" class="primary-button"><span>⇩</span>保存高清制作图</button>
           <button id="saveMirroredPattern" class="secondary-save mirror-save"><span>⇆</span>保存镜像制作图</button>
+          <button id="saveProjectResultButton" class="secondary-save project-save" type="button"><span>⌁</span>保存工程，换电脑继续</button>
         </div>
       </section>
     </main>
