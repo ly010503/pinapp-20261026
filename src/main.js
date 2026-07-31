@@ -31,6 +31,11 @@ import {
   getPatternTapIntent,
   getRectangularSelectionPositions,
 } from './pattern/cellSelection.js';
+import {
+  createPatternSnapshot,
+  pushPatternSnapshot,
+  restorePatternSnapshot,
+} from './pattern/undoHistory.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
 import {
   DEFAULT_TILED_WATERMARK,
@@ -43,6 +48,7 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const number = new Intl.NumberFormat('zh-CN');
 const RECENT_COLORS_KEY = 'perler-recent-replacement-colors';
+const PATTERN_UNDO_LIMIT = 20;
 const state = store.get();
 state.palette = preparePalette([...paletteJson, MANUAL_BLANK_COLOR]);
 
@@ -196,6 +202,7 @@ async function loadFile(file) {
       crop: null, transform: { rotation: 0, flipH: false, flipV: false },
       currentPattern: null, statistics: [], highlightedCode: null, dirty: false,
     });
+    state.patternUndoHistory.length = 0;
     generationVersion += 1;
     $('#uploadPrompt').hidden = true;
     $('#uploadedSummary').hidden = false;
@@ -357,6 +364,7 @@ async function generate() {
     }
     state.selectedCellPositions.clear();
     state.selectionAnchorPosition = null;
+    state.patternUndoHistory.length = 0;
     Object.assign(state, { currentPattern: pattern, statistics, highlightedCode: null, dirty: false, previewMode: 'effect' });
     updateCellSelectionUi();
     showAllColors = false;
@@ -545,23 +553,7 @@ function openReplaceSelectedCellsDialog() {
   $('#replaceColorDialog').showModal();
 }
 
-function applyColorReplacement() {
-  const target = state.palette[replacementTargetIndex];
-  const batchReplacement = Boolean(replacementCells?.length);
-  const source = Number.isInteger(replacementSourceIndex) ? state.palette[replacementSourceIndex] : null;
-  if (!target || (!batchReplacement && (!source || source.index === target.index))) {
-    return notify('请选择一种不同的替换颜色', 'error');
-  }
-
-  const cellReplacement = Boolean(replacementCell);
-  const selectedCount = replacementCells?.length || 0;
-  const replaced = batchReplacement
-    ? replacePatternCells(state.currentPattern, replacementCells, target.index)
-    : cellReplacement
-      ? Number(replacePatternCell(state.currentPattern, replacementCell.position, target.index))
-      : replacePatternColor(state.currentPattern, source.index, target.index);
-  if (!replaced) return notify(batchReplacement ? '所选格子已经是这个颜色' : '当前格子的颜色没有发生变化', 'error');
-
+function recalculatePatternStatistics() {
   state.currentPattern.backgroundMask = createWhiteBackgroundMask(
     state.currentPattern,
     state.palette,
@@ -572,13 +564,54 @@ function applyColorReplacement() {
     state.palette,
     state.currentPattern.backgroundMask,
   );
-  if (statisticsTotal(state.statistics) !== countPatternBeans(
+  return statisticsTotal(state.statistics) === countPatternBeans(
     state.currentPattern.indices,
     state.palette,
     state.currentPattern.backgroundMask,
-  )) {
+  );
+}
+
+function undoLastPatternEdit() {
+  if (!state.currentPattern || !restorePatternSnapshot(state.patternUndoHistory, state.currentPattern)) {
+    notify('还没有可撤销的图纸修改');
+    return;
+  }
+  if (!recalculatePatternStatistics()) {
+    notify('撤销后的颜色统计校验失败，请重新生成图纸', 'error');
+    return;
+  }
+  state.highlightedCode = null;
+  clearSelectedCells({ redraw: false });
+  showAllColors = state.statistics.length > 8 && showAllColors;
+  renderStatistics();
+  renderer.rebuild();
+  notify('已撤销上一次图纸修改', 'success');
+}
+
+function applyColorReplacement() {
+  const target = state.palette[replacementTargetIndex];
+  const batchReplacement = Boolean(replacementCells?.length);
+  const source = Number.isInteger(replacementSourceIndex) ? state.palette[replacementSourceIndex] : null;
+  if (!target || (!batchReplacement && (!source || source.index === target.index))) {
+    return notify('请选择一种不同的替换颜色', 'error');
+  }
+
+  const cellReplacement = Boolean(replacementCell);
+  const selectedCount = replacementCells?.length || 0;
+  const snapshot = createPatternSnapshot(state.currentPattern);
+  const replaced = batchReplacement
+    ? replacePatternCells(state.currentPattern, replacementCells, target.index)
+    : cellReplacement
+      ? Number(replacePatternCell(state.currentPattern, replacementCell.position, target.index))
+      : replacePatternColor(state.currentPattern, source.index, target.index);
+  if (!replaced) return notify(batchReplacement ? '所选格子已经是这个颜色' : '当前格子的颜色没有发生变化', 'error');
+
+  if (!recalculatePatternStatistics()) {
+    if (snapshot) state.currentPattern.indices.set(snapshot);
+    recalculatePatternStatistics();
     return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
   }
+  pushPatternSnapshot(state.patternUndoHistory, snapshot, PATTERN_UNDO_LIMIT);
   state.highlightedCode = batchReplacement || cellReplacement || target.excludeFromStatistics ? null : target.code;
   if (!target.manualOnly) rememberReplacementColor(target.code);
   if (batchReplacement) {
@@ -605,27 +638,17 @@ function replaceCellWithBlank(cell) {
   const blank = state.palette.find((color) => color.manualOnly);
   if (!blank) return notify('纯白留白加载失败，请刷新页面', 'error');
   if (cell.colorIndex === blank.index) return notify('这个格子已经是纯白留白');
+  const snapshot = createPatternSnapshot(state.currentPattern);
   if (!replacePatternCell(state.currentPattern, cell.position, blank.index)) {
     return notify('当前格子没有发生变化', 'error');
   }
 
-  state.currentPattern.backgroundMask = createWhiteBackgroundMask(
-    state.currentPattern,
-    state.palette,
-    state.currentPattern.sourcePixels,
-  );
-  state.statistics = calculateStatistics(
-    state.currentPattern.indices,
-    state.palette,
-    state.currentPattern.backgroundMask,
-  );
-  if (statisticsTotal(state.statistics) !== countPatternBeans(
-    state.currentPattern.indices,
-    state.palette,
-    state.currentPattern.backgroundMask,
-  )) {
+  if (!recalculatePatternStatistics()) {
+    if (snapshot) state.currentPattern.indices.set(snapshot);
+    recalculatePatternStatistics();
     return notify('快捷留白后的颜色统计校验失败，请重新生成图纸', 'error');
   }
+  pushPatternSnapshot(state.patternUndoHistory, snapshot, PATTERN_UNDO_LIMIT);
 
   state.highlightedCode = null;
   renderStatistics();
@@ -755,6 +778,18 @@ $$('[data-transform]').forEach((button) => button.addEventListener('click', () =
 $('#generateButton').addEventListener('click', generate);
 window.addEventListener('resize', () => { if (state.image) drawSourcePreview(); });
 document.addEventListener('keydown', (event) => {
+  const target = event.target;
+  const editingText = target instanceof HTMLElement
+    && (target.matches('input, textarea, [contenteditable="true"]') || target.isContentEditable);
+  const undoShortcut = (event.ctrlKey || event.metaKey)
+    && !event.shiftKey
+    && !event.altKey
+    && event.key.toLowerCase() === 'z';
+  if (undoShortcut && !editingText && !$('#replaceColorDialog').open) {
+    event.preventDefault();
+    undoLastPatternEdit();
+    return;
+  }
   if (event.key === 'Escape' && !$('#replaceColorDialog').open) {
     if (state.selectedCellPositions.size) {
       clearSelectedCells();

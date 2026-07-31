@@ -19,6 +19,7 @@ const state = {
   highlightedCode: null,
   selectedCellPositions: new Set(),
   selectionAnchorPosition: null,
+  patternUndoHistory: [],
   generating: false,
   dirty: false,
   options: { reduceIsolated: true, mergeColors: true },
