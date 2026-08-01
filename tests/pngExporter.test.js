@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { preferredCell, selectExportCell } from '../src/export/pngExporter.js';
+import {
+  highlightedExportFileName,
+  preferredCell,
+  selectExportCell,
+} from '../src/export/pngExporter.js';
 
 test('高清导出的每格像素明显高于预览', () => {
   assert.equal(preferredCell({ width: 30 }, 'pattern'), 64);
@@ -31,4 +35,11 @@ test('超大图会在设备预算内降档且不超过浏览器常见边长限�
   const selection = selectExportCell(pattern, new Array(60).fill({}), 'pattern', 4);
   assert.ok(selection.cell >= 24);
   assert.ok(selection.cell < preferredCell(pattern, 'pattern'));
+});
+
+test('分色定位图文件名包含色号和图纸尺寸', () => {
+  assert.equal(
+    highlightedExportFileName('C20', { width: 70, height: 104 }),
+    '拼豆分色定位图-C20-70x104.png',
+  );
 });

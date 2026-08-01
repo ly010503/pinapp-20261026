@@ -121,3 +121,28 @@ export async function exportPatternPng(pattern, palette, statistics, {
   download(result.blob, `${kind}-${pattern.width}x${pattern.height}.png`);
   return result;
 }
+
+export function highlightedExportFileName(code, pattern) {
+  const safeCode = String(code || '颜色').replace(/[^A-Za-z0-9_-]/g, '-');
+  return `拼豆分色定位图-${safeCode}-${pattern.width}x${pattern.height}.png`;
+}
+
+export async function exportHighlightedColorPng(pattern, palette, statistics, highlightedCode, {
+  tiledWatermarkText = '',
+} = {}) {
+  const target = statistics.find((item) => item.code === highlightedCode);
+  if (!target) throw new Error('请先从用豆清单中选择一种颜色');
+  const targetStatistics = [target];
+  const selection = safeCell(pattern, targetStatistics, 'pattern');
+  const result = await renderWithFallback(
+    (ctx, cell) => drawPatternSheet(ctx, pattern, palette, targetStatistics, {
+      cell,
+      highlightedCode,
+      tiledWatermarkText,
+      title: `${target.code} 分色定位图 · ${target.count}颗`,
+    }),
+    selection,
+  );
+  download(result.blob, highlightedExportFileName(target.code, pattern));
+  return { ...result, target };
+}

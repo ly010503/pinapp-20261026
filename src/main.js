@@ -41,7 +41,11 @@ import {
   DEFAULT_TILED_WATERMARK,
   normalizeWatermarkText,
 } from './canvas/tiledWatermark.js';
-import { exportEffectPng, exportPatternPng } from './export/pngExporter.js';
+import {
+  exportEffectPng,
+  exportHighlightedColorPng,
+  exportPatternPng,
+} from './export/pngExporter.js';
 import {
   createProjectDocument,
   parseProjectDocument,
@@ -485,6 +489,11 @@ function renderColorList() {
   $('#toggleColors').hidden = state.statistics.length <= 8;
   $('#toggleColors').textContent = showAllColors ? '收起' : `展开全部（${state.statistics.length}色）`;
   $('#replaceSelectedColor').disabled = !state.highlightedCode;
+  const highlighted = state.statistics.find((item) => item.code === state.highlightedCode);
+  $('#exportHighlightedColor').disabled = !highlighted;
+  $('#exportHighlightedColor').textContent = highlighted
+    ? `导出 ${highlighted.code} 分色定位图（${number.format(highlighted.count)}颗）`
+    : '先选择颜色，再导出定位图';
 }
 
 function renderStatistics() {
@@ -974,6 +983,32 @@ function bindResults() {
   $('#toggleColors').addEventListener('click', () => { showAllColors = !showAllColors; renderColorList(); });
   $('#copyColors').addEventListener('click', copyList);
   $('#replaceSelectedColor').addEventListener('click', openReplaceColorDialog);
+  $('#exportHighlightedColor').addEventListener('click', async () => {
+    const button = $('#exportHighlightedColor');
+    const highlighted = state.statistics.find((item) => item.code === state.highlightedCode);
+    if (!highlighted) return notify('请先从用豆清单中选择一种颜色', 'error');
+    button.disabled = true;
+    try {
+      const result = await exportHighlightedColorPng(
+        state.currentPattern,
+        state.palette,
+        state.statistics,
+        highlighted.code,
+        { tiledWatermarkText: getExportWatermarkText() },
+      );
+      notify(
+        result.reduced
+          ? `${highlighted.code} 定位图已按设备能力安全导出，共 ${number.format(highlighted.count)}颗`
+          : `${highlighted.code} 分色定位图已保存，共 ${number.format(highlighted.count)}颗`,
+        'success',
+        5000,
+      );
+    } catch (error) {
+      notify(error.message || '分色定位图导出失败，请重试', 'error', 5000);
+    } finally {
+      renderColorList();
+    }
+  });
   $('#replaceSelectedCells').addEventListener('click', openReplaceSelectedCellsDialog);
   $('#clearSelectedCells').addEventListener('click', () => clearSelectedCells());
   $('#closeReplaceColor').addEventListener('click', () => $('#replaceColorDialog').close());

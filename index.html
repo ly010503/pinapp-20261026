@@ -143,10 +143,11 @@
             <div><span>实际使用</span><strong id="summaryColors">0种颜色</strong></div>
             <div><span>成品尺寸（2.6mm豆）</span><strong id="summaryPhysical">约0cm × 0cm</strong></div>
           </div>
-          <p class="replace-hint">点击一种颜色可在图纸中高亮，也可以替换成221色色卡中的任意颜色。</p>
+          <p class="replace-hint">点击一种颜色，其他颜色会淡化，目标色会用紫色逐格描边。选中后还能导出单独的分色定位图。</p>
           <div id="colorList" class="color-list"></div>
           <div class="list-actions">
             <button id="replaceSelectedColor" class="replace-selected-button" disabled>替换选中颜色</button>
+            <button id="exportHighlightedColor" class="highlight-export-button" disabled>先选择颜色，再导出定位图</button>
             <button id="toggleColors" class="soft-button" hidden>展开全部</button>
             <button id="copyColors" class="soft-button">复制用豆清单</button>
           </div>

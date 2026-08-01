@@ -6,6 +6,14 @@ export const GUIDE_STEP = 5;
 export const CREATOR_WATERMARK = '@小石豆图';
 export const COPYRIGHT_NOTICE = '原创作品 · 禁止盗用';
 export const MIRROR_BADGE_TEXT = '镜像图';
+export const HIGHLIGHT_MUTED_FILL = '#E8E6EC';
+export const HIGHLIGHT_OUTLINE = '#4F2FC4';
+
+export function isHighlightedPatternCell(pattern, palette, position, highlightedCode) {
+  if (!highlightedCode || pattern.backgroundMask?.[position]) return false;
+  const color = palette[pattern.indices[position]];
+  return Boolean(color && !color.excludeFromStatistics && color.code === highlightedCode);
+}
 
 export function getCoordinateValues(length, step = GUIDE_STEP) {
   const values = [1];
@@ -48,6 +56,14 @@ function drawBrand(ctx, x, y, scale = 1) {
   });
 }
 
+function drawHighlightOutline(ctx, x, y, cell) {
+  const lineWidth = Math.max(1.5, cell * 0.12);
+  const inset = lineWidth / 2;
+  ctx.strokeStyle = HIGHLIGHT_OUTLINE;
+  ctx.lineWidth = lineWidth;
+  ctx.strokeRect(x + inset, y + inset, cell - lineWidth, cell - lineWidth);
+}
+
 export function getSheetLayout(pattern, statistics, cell) {
   const padding = Math.max(28, Math.round(cell * 1.6));
   const coordinate = Math.max(24, Math.round(cell * 1.25));
@@ -84,12 +100,15 @@ export function drawEffect(ctx, pattern, palette, {
   ctx.canvas.width = width; ctx.canvas.height = height;
   ctx.fillStyle = background; ctx.fillRect(0, 0, width, height);
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
-    const color = palette[pattern.indices[y * pattern.width + x]];
-    ctx.globalAlpha = highlightedCode && color.code !== highlightedCode ? 0.16 : 1;
-    ctx.fillStyle = color.hex;
-    ctx.fillRect(padding + x * cell, padding + y * cell, cell, cell);
+    const position = y * pattern.width + x;
+    const color = palette[pattern.indices[position]];
+    const highlighted = isHighlightedPatternCell(pattern, palette, position, highlightedCode);
+    const px = padding + x * cell;
+    const py = padding + y * cell;
+    ctx.fillStyle = highlightedCode && !highlighted ? HIGHLIGHT_MUTED_FILL : color.hex;
+    ctx.fillRect(px, py, cell, cell);
+    if (highlighted) drawHighlightOutline(ctx, px, py, cell);
   }
-  ctx.globalAlpha = 1;
   drawTiledWatermark(ctx, {
     x: padding,
     y: padding,
@@ -156,11 +175,13 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
     const position = getPatternPosition(pattern.width, x, y, mirrorX);
     const color = palette[pattern.indices[position]];
-    ctx.globalAlpha = highlightedCode && color.code !== highlightedCode ? 0.14 : 1;
-    ctx.fillStyle = color.hex;
-    ctx.fillRect(gridX + x * cell, gridY + y * cell, cell, cell);
+    const highlighted = isHighlightedPatternCell(pattern, palette, position, highlightedCode);
+    const px = gridX + x * cell;
+    const py = gridY + y * cell;
+    ctx.fillStyle = highlightedCode && !highlighted ? HIGHLIGHT_MUTED_FILL : color.hex;
+    ctx.fillRect(px, py, cell, cell);
+    if (highlighted) drawHighlightOutline(ctx, px, py, cell);
   }
-  ctx.globalAlpha = 1;
   drawTiledWatermark(ctx, {
     x: gridX,
     y: gridY,
@@ -209,6 +230,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     if (pattern.backgroundMask?.[position]) continue;
     const color = palette[pattern.indices[position]];
     if (color.hideCode) continue;
+    if (highlightedCode && !isHighlightedPatternCell(pattern, palette, position, highlightedCode)) continue;
     const dark = colorLuminance(color.rgb) < 0.36;
     const tx = gridX + (x + 0.5) * cell, ty = gridY + (y + 0.52) * cell;
     ctx.lineWidth = enhancedLargePattern
@@ -232,9 +254,12 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     const startX = Math.round((paperWidth - usedWidth) / 2);
     const x = startX + column * (layout.cardWidth + layout.cardGap);
     const y = layout.legendY + row * (layout.cardHeight + layout.cardGap);
-    ctx.fillStyle = item.hex; roundRect(ctx, x, y, layout.cardWidth, layout.cardHeight, Math.max(5, cell * 0.35)); ctx.fill();
-    ctx.strokeStyle = 'rgba(60,58,65,.18)'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = colorLuminance(item.rgb) < 0.36 ? '#FFFFFF' : '#2E2C35'; ctx.textAlign = 'center';
+    const highlighted = !highlightedCode || item.code === highlightedCode;
+    ctx.fillStyle = highlighted ? item.hex : HIGHLIGHT_MUTED_FILL; roundRect(ctx, x, y, layout.cardWidth, layout.cardHeight, Math.max(5, cell * 0.35)); ctx.fill();
+    ctx.strokeStyle = highlightedCode && highlighted ? HIGHLIGHT_OUTLINE : 'rgba(60,58,65,.18)';
+    ctx.lineWidth = highlightedCode && highlighted ? Math.max(2, cell * 0.12) : 1;
+    ctx.stroke();
+    ctx.fillStyle = highlighted && colorLuminance(item.rgb) < 0.36 ? '#FFFFFF' : highlighted ? '#2E2C35' : '#85818A'; ctx.textAlign = 'center';
     ctx.font = `700 ${Math.max(10, Math.round(cell * 0.58))}px Arial, sans-serif`; ctx.fillText(item.code, x + layout.cardWidth / 2, y + layout.cardHeight * 0.36);
     ctx.font = `600 ${Math.max(9, Math.round(cell * 0.47))}px "PingFang SC", sans-serif`; ctx.fillText(`${number.format(item.count)}颗`, x + layout.cardWidth / 2, y + layout.cardHeight * 0.72);
   });
