@@ -42,6 +42,7 @@ import {
   normalizeWatermarkText,
 } from './canvas/tiledWatermark.js';
 import {
+  exportAllHighlightedColorsZip,
   exportEffectPng,
   exportHighlightedColorPng,
   exportPatternPng,
@@ -65,6 +66,7 @@ state.palette = preparePalette([...paletteJson, MANUAL_BLANK_COLOR]);
 
 let generationVersion = 0;
 let showAllColors = false;
+let exportingAllColors = false;
 let replacementSourceIndex = null;
 let replacementTargetIndex = null;
 let replacementCell = null;
@@ -490,10 +492,14 @@ function renderColorList() {
   $('#toggleColors').textContent = showAllColors ? '收起' : `展开全部（${state.statistics.length}色）`;
   $('#replaceSelectedColor').disabled = !state.highlightedCode;
   const highlighted = state.statistics.find((item) => item.code === state.highlightedCode);
-  $('#exportHighlightedColor').disabled = !highlighted;
+  $('#exportHighlightedColor').disabled = !highlighted || exportingAllColors;
   $('#exportHighlightedColor').textContent = highlighted
     ? `导出 ${highlighted.code} 分色定位图（${number.format(highlighted.count)}颗）`
     : '先选择颜色，再导出定位图';
+  $('#exportAllHighlightedColors').disabled = !state.statistics.length || exportingAllColors;
+  $('#exportAllHighlightedColors').textContent = exportingAllColors
+    ? '正在生成全部分色定位图…'
+    : `一键导出全部分色定位图（${state.statistics.length}色）`;
 }
 
 function renderStatistics() {
@@ -1006,6 +1012,31 @@ function bindResults() {
     } catch (error) {
       notify(error.message || '分色定位图导出失败，请重试', 'error', 5000);
     } finally {
+      renderColorList();
+    }
+  });
+  $('#exportAllHighlightedColors').addEventListener('click', async () => {
+    if (!state.statistics.length) return notify('当前图纸没有可导出的颜色', 'error');
+    const button = $('#exportAllHighlightedColors');
+    exportingAllColors = true;
+    renderColorList();
+    try {
+      const result = await exportAllHighlightedColorsZip(
+        state.currentPattern,
+        state.palette,
+        state.statistics,
+        {
+          tiledWatermarkText: getExportWatermarkText(),
+          onProgress: ({ completed, total, target }) => {
+            button.textContent = `正在生成 ${completed}/${total}：${target.code}`;
+          },
+        },
+      );
+      notify(`已导出全部 ${result.count} 种颜色的分色定位图（ZIP）`, 'success', 6000);
+    } catch (error) {
+      notify(error.message || '全部分色定位图导出失败，请重试', 'error', 6000);
+    } finally {
+      exportingAllColors = false;
       renderColorList();
     }
   });

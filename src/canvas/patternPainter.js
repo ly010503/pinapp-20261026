@@ -6,7 +6,7 @@ export const GUIDE_STEP = 5;
 export const CREATOR_WATERMARK = '@小石豆图';
 export const COPYRIGHT_NOTICE = '原创作品 · 禁止盗用';
 export const MIRROR_BADGE_TEXT = '镜像图';
-export const HIGHLIGHT_MUTED_FILL = '#E8E6EC';
+export const HIGHLIGHT_MUTED_OVERLAY = 'rgba(250, 248, 252, .38)';
 export const HIGHLIGHT_OUTLINE = '#4F2FC4';
 
 export function isHighlightedPatternCell(pattern, palette, position, highlightedCode) {
@@ -57,11 +57,44 @@ function drawBrand(ctx, x, y, scale = 1) {
 }
 
 function drawHighlightOutline(ctx, x, y, cell) {
-  const lineWidth = Math.max(1.5, cell * 0.12);
-  const inset = lineWidth / 2;
+  const outerWidth = Math.max(2.5, cell * 0.22);
+  const outerInset = outerWidth / 2;
+  ctx.strokeStyle = 'rgba(255, 255, 255, .96)';
+  ctx.lineWidth = outerWidth;
+  ctx.strokeRect(x + outerInset, y + outerInset, cell - outerWidth, cell - outerWidth);
+
+  const lineWidth = Math.max(1.7, cell * 0.12);
+  const inset = Math.max(outerWidth, lineWidth) / 2;
   ctx.strokeStyle = HIGHLIGHT_OUTLINE;
   ctx.lineWidth = lineWidth;
-  ctx.strokeRect(x + inset, y + inset, cell - lineWidth, cell - lineWidth);
+  ctx.strokeRect(x + inset, y + inset, cell - inset * 2, cell - inset * 2);
+
+  if (cell >= 10) {
+    const markerX = x + cell * 0.76;
+    const markerY = y + cell * 0.24;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(markerX, markerY, Math.max(2.2, cell * 0.13), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = HIGHLIGHT_OUTLINE;
+    ctx.beginPath();
+    ctx.arc(markerX, markerY, Math.max(1.3, cell * 0.075), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawMutedColor(ctx, hex, x, y, width, height = width) {
+  ctx.fillStyle = hex;
+  ctx.fillRect(x, y, width, height);
+  ctx.fillStyle = HIGHLIGHT_MUTED_OVERLAY;
+  ctx.fillRect(x, y, width, height);
+}
+
+export function getHighlightHeaderText(item) {
+  return {
+    title: `${item.code} · ${item.name}`,
+    subtitle: `分色定位图 · 共 ${number.format(item.count)}颗`,
+  };
 }
 
 export function getSheetLayout(pattern, statistics, cell) {
@@ -102,12 +135,11 @@ export function drawEffect(ctx, pattern, palette, {
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
     const position = y * pattern.width + x;
     const color = palette[pattern.indices[position]];
-    const highlighted = isHighlightedPatternCell(pattern, palette, position, highlightedCode);
     const px = padding + x * cell;
     const py = padding + y * cell;
-    ctx.fillStyle = highlightedCode && !highlighted ? HIGHLIGHT_MUTED_FILL : color.hex;
-    ctx.fillRect(px, py, cell, cell);
-    if (highlighted) drawHighlightOutline(ctx, px, py, cell);
+    const muted = highlightedCode && !isHighlightedPatternCell(pattern, palette, position, highlightedCode);
+    if (muted) drawMutedColor(ctx, color.hex, px, py, cell);
+    else { ctx.fillStyle = color.hex; ctx.fillRect(px, py, cell, cell); }
   }
   drawTiledWatermark(ctx, {
     x: padding,
@@ -121,6 +153,13 @@ export function drawEffect(ctx, pattern, palette, {
   for (let x = 0; x <= pattern.width; x += 1) { const px = padding + x * cell + 0.5; ctx.moveTo(px, padding); ctx.lineTo(px, padding + pattern.height * cell); }
   for (let y = 0; y <= pattern.height; y += 1) { const py = padding + y * cell + 0.5; ctx.moveTo(padding, py); ctx.lineTo(padding + pattern.width * cell, py); }
   ctx.stroke();
+  if (highlightedCode) {
+    for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
+      const position = y * pattern.width + x;
+      if (!isHighlightedPatternCell(pattern, palette, position, highlightedCode)) continue;
+      drawHighlightOutline(ctx, padding + x * cell, padding + y * cell, cell);
+    }
+  }
   if (showWatermark) {
     const footerTop = height - footer;
     ctx.fillStyle = '#4F426F';
@@ -169,18 +208,40 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
   ctx.fillStyle = '#34313B'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.font = `800 ${Math.max(30, Math.round(cell * 1.75))}px "PingFang SC", sans-serif`;
   ctx.fillText(CREATOR_WATERMARK, brandX + Math.max(44, cell * 2.8), layout.header * 0.45);
-  ctx.textAlign = 'right'; ctx.fillStyle = '#7666B3'; ctx.font = `750 ${Math.max(21, Math.round(cell * 1.15))}px "PingFang SC", sans-serif`;
-  ctx.fillText(title, paperWidth - layout.padding, layout.header * 0.45);
+  const highlightedItem = highlightedCode
+    ? statistics.find((item) => item.code === highlightedCode)
+    : null;
+  if (highlightedItem) {
+    const headerText = getHighlightHeaderText(highlightedItem);
+    const swatchSize = Math.max(48, Math.round(cell * 2.55));
+    const swatchX = paperWidth - layout.padding - swatchSize;
+    const swatchY = Math.round(layout.header * 0.45 - swatchSize / 2);
+    const textX = swatchX - Math.max(14, Math.round(cell * 0.7));
+    ctx.fillStyle = highlightedItem.hex;
+    roundRect(ctx, swatchX, swatchY, swatchSize, swatchSize, Math.max(9, Math.round(cell * 0.45)));
+    ctx.fill();
+    ctx.strokeStyle = HIGHLIGHT_OUTLINE;
+    ctx.lineWidth = Math.max(3, Math.round(cell * 0.16));
+    ctx.stroke();
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#332A50';
+    ctx.font = `850 ${Math.max(28, Math.round(cell * 1.42))}px "PingFang SC", sans-serif`;
+    ctx.fillText(headerText.title, textX, layout.header * 0.34);
+    ctx.fillStyle = '#7666B3';
+    ctx.font = `700 ${Math.max(17, Math.round(cell * 0.78))}px "PingFang SC", sans-serif`;
+    ctx.fillText(headerText.subtitle, textX, layout.header * 0.65);
+  } else {
+    ctx.textAlign = 'right'; ctx.fillStyle = '#7666B3'; ctx.font = `750 ${Math.max(21, Math.round(cell * 1.15))}px "PingFang SC", sans-serif`;
+    ctx.fillText(title, paperWidth - layout.padding, layout.header * 0.45);
+  }
 
   for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
     const position = getPatternPosition(pattern.width, x, y, mirrorX);
     const color = palette[pattern.indices[position]];
-    const highlighted = isHighlightedPatternCell(pattern, palette, position, highlightedCode);
     const px = gridX + x * cell;
     const py = gridY + y * cell;
-    ctx.fillStyle = highlightedCode && !highlighted ? HIGHLIGHT_MUTED_FILL : color.hex;
-    ctx.fillRect(px, py, cell, cell);
-    if (highlighted) drawHighlightOutline(ctx, px, py, cell);
+    const muted = highlightedCode && !isHighlightedPatternCell(pattern, palette, position, highlightedCode);
+    if (muted) drawMutedColor(ctx, color.hex, px, py, cell);
+    else { ctx.fillStyle = color.hex; ctx.fillRect(px, py, cell, cell); }
   }
   drawTiledWatermark(ctx, {
     x: gridX,
@@ -230,7 +291,7 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     if (pattern.backgroundMask?.[position]) continue;
     const color = palette[pattern.indices[position]];
     if (color.hideCode) continue;
-    if (highlightedCode && !isHighlightedPatternCell(pattern, palette, position, highlightedCode)) continue;
+    const muted = highlightedCode && !isHighlightedPatternCell(pattern, palette, position, highlightedCode);
     const dark = colorLuminance(color.rgb) < 0.36;
     const tx = gridX + (x + 0.5) * cell, ty = gridY + (y + 0.52) * cell;
     ctx.lineWidth = enhancedLargePattern
@@ -238,8 +299,18 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
       : Math.max(0.75, cell * 0.045);
     ctx.strokeStyle = dark ? 'rgba(0,0,0,.38)' : 'rgba(255,255,255,.76)';
     ctx.fillStyle = dark ? '#FFFFFF' : '#25232B';
+    ctx.globalAlpha = muted ? 0.42 : 1;
     ctx.strokeText(color.code, tx, ty, cell - 2);
     ctx.fillText(color.code, tx, ty, cell - 2);
+    ctx.globalAlpha = 1;
+  }
+
+  if (highlightedCode) {
+    for (let y = 0; y < pattern.height; y += 1) for (let x = 0; x < pattern.width; x += 1) {
+      const position = getPatternPosition(pattern.width, x, y, mirrorX);
+      if (!isHighlightedPatternCell(pattern, palette, position, highlightedCode)) continue;
+      drawHighlightOutline(ctx, gridX + x * cell, gridY + y * cell, cell);
+    }
   }
 
   ctx.fillStyle = '#565A63'; ctx.font = `700 ${Math.max(9, Math.round(cell * 0.5))}px Arial, sans-serif`; ctx.textAlign = 'center';
@@ -255,7 +326,11 @@ export function drawPatternSheet(ctx, pattern, palette, statistics, {
     const x = startX + column * (layout.cardWidth + layout.cardGap);
     const y = layout.legendY + row * (layout.cardHeight + layout.cardGap);
     const highlighted = !highlightedCode || item.code === highlightedCode;
-    ctx.fillStyle = highlighted ? item.hex : HIGHLIGHT_MUTED_FILL; roundRect(ctx, x, y, layout.cardWidth, layout.cardHeight, Math.max(5, cell * 0.35)); ctx.fill();
+    ctx.fillStyle = item.hex; roundRect(ctx, x, y, layout.cardWidth, layout.cardHeight, Math.max(5, cell * 0.35)); ctx.fill();
+    if (!highlighted) {
+      ctx.fillStyle = HIGHLIGHT_MUTED_OVERLAY;
+      ctx.fill();
+    }
     ctx.strokeStyle = highlightedCode && highlighted ? HIGHLIGHT_OUTLINE : 'rgba(60,58,65,.18)';
     ctx.lineWidth = highlightedCode && highlighted ? Math.max(2, cell * 0.12) : 1;
     ctx.stroke();

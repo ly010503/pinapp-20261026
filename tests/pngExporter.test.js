@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  allHighlightedExportFileName,
   highlightedExportFileName,
   preferredCell,
   selectExportCell,
@@ -11,6 +12,13 @@ test('高清导出的每格像素明显高于预览', () => {
   assert.equal(preferredCell({ width: 60 }, 'pattern'), 44);
   assert.equal(preferredCell({ width: 80 }, 'pattern'), 36);
   assert.equal(preferredCell({ width: 80 }, 'effect'), 30);
+});
+
+test('全部分色定位图会合并为一个带尺寸的 ZIP', () => {
+  assert.equal(
+    allHighlightedExportFileName({ width: 70, height: 104 }),
+    '拼豆全部分色定位图-70x104.zip',
+  );
 });
 
 test('150格及以下保持原来的制作图导出规格', () => {

@@ -4,6 +4,7 @@ import {
   drawPatternSheet,
   getSheetLayout,
 } from '../canvas/patternPainter.js';
+import { Zip, ZipPassThrough } from 'fflate';
 
 function download(blob, name) {
   const url = URL.createObjectURL(blob);
@@ -127,7 +128,11 @@ export function highlightedExportFileName(code, pattern) {
   return `拼豆分色定位图-${safeCode}-${pattern.width}x${pattern.height}.png`;
 }
 
-export async function exportHighlightedColorPng(pattern, palette, statistics, highlightedCode, {
+export function allHighlightedExportFileName(pattern) {
+  return `拼豆全部分色定位图-${pattern.width}x${pattern.height}.zip`;
+}
+
+async function renderHighlightedColor(pattern, palette, statistics, highlightedCode, {
   tiledWatermarkText = '',
 } = {}) {
   const target = statistics.find((item) => item.code === highlightedCode);
@@ -139,10 +144,65 @@ export async function exportHighlightedColorPng(pattern, palette, statistics, hi
       cell,
       highlightedCode,
       tiledWatermarkText,
-      title: `${target.code} 分色定位图 · ${target.count}颗`,
     }),
     selection,
   );
-  download(result.blob, highlightedExportFileName(target.code, pattern));
   return { ...result, target };
+}
+
+export async function exportHighlightedColorPng(pattern, palette, statistics, highlightedCode, {
+  tiledWatermarkText = '',
+} = {}) {
+  const result = await renderHighlightedColor(
+    pattern,
+    palette,
+    statistics,
+    highlightedCode,
+    { tiledWatermarkText },
+  );
+  download(result.blob, highlightedExportFileName(result.target.code, pattern));
+  return result;
+}
+
+export async function exportAllHighlightedColorsZip(pattern, palette, statistics, {
+  tiledWatermarkText = '',
+  onProgress = null,
+} = {}) {
+  if (!statistics.length) throw new Error('当前图纸没有可导出的颜色');
+
+  const chunks = [];
+  let settle;
+  let fail;
+  const completed = new Promise((resolve, reject) => { settle = resolve; fail = reject; });
+  const zip = new Zip((error, data, final) => {
+    if (error) { fail(error); return; }
+    chunks.push(data);
+    if (final) settle();
+  });
+
+  try {
+    for (let index = 0; index < statistics.length; index += 1) {
+      const target = statistics[index];
+      const result = await renderHighlightedColor(
+        pattern,
+        palette,
+        statistics,
+        target.code,
+        { tiledWatermarkText },
+      );
+      const entry = new ZipPassThrough(highlightedExportFileName(target.code, pattern));
+      zip.add(entry);
+      entry.push(new Uint8Array(await result.blob.arrayBuffer()), true);
+      onProgress?.({ completed: index + 1, total: statistics.length, target });
+    }
+    zip.end();
+    await completed;
+  } catch (error) {
+    zip.terminate?.();
+    throw error;
+  }
+
+  const blob = new Blob(chunks, { type: 'application/zip' });
+  download(blob, allHighlightedExportFileName(pattern));
+  return { blobSize: blob.size, count: statistics.length };
 }
