@@ -17,7 +17,7 @@ import {
 } from './color/manualBlankColor.js';
 import { sortPaletteByRecent, updateRecentColorCodes } from './color/recentPalette.js';
 import { createAdjustedCanvas, getGridPixels } from './image/imageProcessor.js';
-import { getColorStyleAdjustments } from './image/colorStyle.js';
+import { getColorStyleAdjustments, shouldProtectDarkOutline } from './image/colorStyle.js';
 import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
 import { calculateStatistics, countPatternBeans, statisticsTotal } from './pattern/statistics.js';
@@ -607,6 +607,7 @@ async function generate() {
       maxColors: state.maxColors,
       reduceIsolated: true,
       mergeColors: true,
+      protectDarkOutline: shouldProtectDarkOutline(state.colorStyle),
       onProgress: updateProgress,
     });
     if (version !== generationVersion) return;

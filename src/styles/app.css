@@ -91,3 +91,5 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 3
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 
 .all-colors-export-button{grid-column:1/-1;min-height:48px;padding:0 14px;border:1.5px solid var(--lavender-dark);border-radius:13px;background:var(--lavender-soft);color:var(--lavender-dark);font-weight:750}.all-colors-export-button:disabled{opacity:.45;cursor:default}
+
+.direct-style-card{grid-column:1/-1;min-height:96px}.direct-dots i:nth-child(1){background:#d6a27c}.direct-dots i:nth-child(2){background:#6da78c}.direct-dots i:nth-child(3){background:#748bb8}

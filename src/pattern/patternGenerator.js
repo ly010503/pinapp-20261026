@@ -27,11 +27,11 @@ function getWorker() {
   return worker;
 }
 
-export function generatePattern({ pixels, width, height, palette, maxColors, reduceIsolated, mergeColors, onProgress }) {
+export function generatePattern({ pixels, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline = true, onProgress }) {
   const id = ++sequence;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject, onProgress });
     const transferable = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
-    getWorker().postMessage({ type: 'generate', id, pixels: transferable, width, height, palette, maxColors, reduceIsolated, mergeColors }, [transferable]);
+    getWorker().postMessage({ type: 'generate', id, pixels: transferable, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline }, [transferable]);
   });
 }

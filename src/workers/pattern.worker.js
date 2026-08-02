@@ -36,12 +36,23 @@ function cleanIsolated(indices, width, height, palette) {
 self.onmessage = ({ data }) => {
   if (data.type !== 'generate') return;
   try {
-    const { id, width, height, maxColors, reduceIsolated, mergeColors, pixels: buffer } = data;
+    const {
+      id,
+      width,
+      height,
+      maxColors,
+      reduceIsolated,
+      mergeColors,
+      protectDarkOutline = true,
+      pixels: buffer,
+    } = data;
     const pixels = new Uint8ClampedArray(buffer);
     const palette = data.palette.map((color) => ({ ...color, lab: rgbToLab(...color.rgb) }));
-    const outlineMask = createOutlineMask(pixels, width, height);
-    const outlineIndex = findOutlinePaletteIndex(palette);
-    const hasProtectedOutline = outlineIndex >= 0 && outlineMask.some(Boolean);
+    const outlineMask = protectDarkOutline
+      ? createOutlineMask(pixels, width, height)
+      : null;
+    const outlineIndex = protectDarkOutline ? findOutlinePaletteIndex(palette) : -1;
+    const hasProtectedOutline = outlineIndex >= 0 && outlineMask?.some(Boolean);
     const raw = new Uint8Array(width * height);
     const counts = new Uint32Array(palette.length);
     const matchCache = new Map();

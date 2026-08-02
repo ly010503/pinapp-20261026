@@ -82,3 +82,10 @@ test('拒绝未知版本和长度损坏的图纸', () => {
 test('工程格式标识保持稳定', () => {
   assert.equal(createExampleDocument().format, PROJECT_FORMAT);
 });
+
+test('工程文件会保留原色识别模式', () => {
+  const document = createExampleDocument();
+  document.settings.colorStyle = 'direct';
+  const restored = parseProjectDocument(serializeProjectDocument(document), { paletteCodes });
+  assert.equal(restored.settings.colorStyle, 'direct');
+});
