@@ -14,3 +14,7 @@ export function getColorStyleAdjustments(baseAdjustments, style = 'vivid') {
 export function shouldProtectDarkOutline(style = 'vivid') {
   return style !== 'direct';
 }
+
+export function shouldOmitWhiteBackground(style = 'vivid') {
+  return style !== 'direct';
+}

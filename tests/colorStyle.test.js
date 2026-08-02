@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   COLOR_STYLES,
   getColorStyleAdjustments,
+  shouldOmitWhiteBackground,
   shouldProtectDarkOutline,
 } from '../src/image/colorStyle.js';
 
@@ -24,8 +25,11 @@ test('原色识别不改变识别颜色，也不会强制强化黑色轮廓', ()
   assert.equal(direct.saturation, 0);
   assert.equal(direct.sharpen, 10);
   assert.equal(shouldProtectDarkOutline('direct'), false);
+  assert.equal(shouldOmitWhiteBackground('direct'), false);
   assert.equal(shouldProtectDarkOutline('natural'), true);
   assert.equal(shouldProtectDarkOutline('vivid'), true);
+  assert.equal(shouldOmitWhiteBackground('natural'), true);
+  assert.equal(shouldOmitWhiteBackground('vivid'), true);
 });
 
 test('自然和鲜艳模式的原有参数保持不变', () => {

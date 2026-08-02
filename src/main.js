@@ -17,7 +17,11 @@ import {
 } from './color/manualBlankColor.js';
 import { sortPaletteByRecent, updateRecentColorCodes } from './color/recentPalette.js';
 import { createAdjustedCanvas, getGridPixels } from './image/imageProcessor.js';
-import { getColorStyleAdjustments, shouldProtectDarkOutline } from './image/colorStyle.js';
+import {
+  getColorStyleAdjustments,
+  shouldOmitWhiteBackground,
+  shouldProtectDarkOutline,
+} from './image/colorStyle.js';
 import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
 import { calculateStatistics, countPatternBeans, statisticsTotal } from './pattern/statistics.js';
@@ -333,6 +337,12 @@ function syncWatermarkSetting() {
   $('#exportWatermarkCard').classList.toggle('disabled', !watermarkEnabled.checked);
 }
 
+function getPatternBackgroundMask(pattern, sourcePixels, colorStyle = state.colorStyle) {
+  return shouldOmitWhiteBackground(colorStyle)
+    ? createWhiteBackgroundMask(pattern, state.palette, sourcePixels)
+    : null;
+}
+
 async function openProject(file) {
   if (!file) return;
   if (state.generating) return notify('图纸正在生成，请稍后再打开工程');
@@ -350,10 +360,10 @@ async function openProject(file) {
     }
     let statistics = [];
     if (project.pattern) {
-      project.pattern.backgroundMask = createWhiteBackgroundMask(
+      project.pattern.backgroundMask = getPatternBackgroundMask(
         project.pattern,
-        state.palette,
         project.pattern.sourcePixels,
+        project.settings.colorStyle,
       );
       statistics = calculateStatistics(project.pattern.indices, state.palette, project.pattern.backgroundMask);
       if (statisticsTotal(statistics) !== countPatternBeans(
@@ -612,7 +622,7 @@ async function generate() {
     });
     if (version !== generationVersion) return;
     pattern.sourcePixels = pixels;
-    pattern.backgroundMask = createWhiteBackgroundMask(pattern, state.palette, pixels);
+    pattern.backgroundMask = getPatternBackgroundMask(pattern, pixels);
     const statistics = calculateStatistics(pattern.indices, state.palette, pattern.backgroundMask);
     if (statisticsTotal(statistics) !== countPatternBeans(pattern.indices, state.palette, pattern.backgroundMask)) {
       throw new Error('颜色统计校验失败，请重新生成');
@@ -809,9 +819,8 @@ function openReplaceSelectedCellsDialog() {
 }
 
 function recalculatePatternStatistics() {
-  state.currentPattern.backgroundMask = createWhiteBackgroundMask(
+  state.currentPattern.backgroundMask = getPatternBackgroundMask(
     state.currentPattern,
-    state.palette,
     state.currentPattern.sourcePixels,
   );
   state.statistics = calculateStatistics(
