@@ -191,6 +191,20 @@
       <p id="customTotal">总计 7,280颗</p><button id="confirmCustomSize" class="primary-button">使用这个尺寸</button>
     </dialog>
 
+    <dialog id="saveProjectDialog" class="simple-dialog save-project-dialog">
+      <button id="cancelSaveProject" class="icon-close" type="button" aria-label="取消保存工程">×</button>
+      <span class="eyebrow">保存工程</span>
+      <h2>给这个工程起个名字</h2>
+      <form id="saveProjectForm">
+        <label class="project-name-field" for="projectNameInput">
+          <span>工程名称</span>
+          <input id="projectNameInput" type="text" maxlength="80" placeholder="例如：小猫头像 70×104" required autocomplete="off" />
+          <small>保存时会自动添加 .perlerproj 后缀</small>
+        </label>
+        <button id="confirmSaveProject" class="primary-button" type="submit">确认保存工程</button>
+      </form>
+    </dialog>
+
     <dialog id="replaceColorDialog" class="replace-dialog">
       <button id="closeReplaceColor" class="icon-close" aria-label="关闭替换颜色">×</button>
       <span class="eyebrow">手动调整图纸</span>

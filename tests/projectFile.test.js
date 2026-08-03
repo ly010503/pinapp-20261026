@@ -4,6 +4,8 @@ import {
   PROJECT_FORMAT,
   PROJECT_VERSION,
   createProjectDocument,
+  getProjectDownloadFileName,
+  normalizeProjectName,
   parseProjectDocument,
   serializeProjectDocument,
 } from '../src/project/projectFile.js';
@@ -54,7 +56,28 @@ test('工程文件能完整恢复图纸和编辑设置，但不包含撤销历�
   assert.deepEqual([...restored.pattern.sourcePixels], [1, 2, 3, 255, 4, 5, 6, 255]);
   assert.equal(restored.settings.transform.rotation, 90);
   assert.equal(restored.preferences.watermark.text, '@测试水印');
+  assert.equal(restored.name, 'example');
   assert.equal('patternUndoHistory' in restored, false);
+});
+
+test('工程名称会清理非法文件名字符并自动添加后缀', () => {
+  assert.equal(normalizeProjectName(' 小猫:头像?.perlerproj '), '小猫-头像-');
+  assert.equal(getProjectDownloadFileName('夏日拼豆'), '夏日拼豆.perlerproj');
+});
+
+test('重新打开工程后仍能用工程内原图再次保存', () => {
+  const restored = parseProjectDocument(serializeProjectDocument(createExampleDocument()), { paletteCodes });
+  const savedAgain = createProjectDocument({
+    name: '第二次保存',
+    image: restored.image,
+    settings: restored.settings,
+    pattern: restored.pattern,
+    preferences: restored.preferences,
+    paletteCodes,
+  });
+  const reopened = parseProjectDocument(serializeProjectDocument(savedAgain), { paletteCodes });
+  assert.equal(reopened.name, '第二次保存');
+  assert.equal(reopened.image.dataUrl, 'data:image/png;base64,AQID');
 });
 
 test('色卡顺序变化后按色号重新映射图纸', () => {

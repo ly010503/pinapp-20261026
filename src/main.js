@@ -53,6 +53,8 @@ import {
 } from './export/pngExporter.js';
 import {
   createProjectDocument,
+  getProjectDownloadFileName,
+  normalizeProjectName,
   parseProjectDocument,
   serializeProjectDocument,
 } from './project/projectFile.js';
@@ -241,12 +243,6 @@ async function projectImageToFile(image) {
   return new File([blob], image.name, { type: image.type, lastModified: image.lastModified });
 }
 
-function getProjectFileName() {
-  const sourceName = state.file?.name || '拼豆工程';
-  const base = sourceName.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').trim() || '拼豆工程';
-  return `${base}.perlerproj`;
-}
-
 function downloadProjectBlob(blob, fileName) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -261,22 +257,45 @@ function downloadProjectBlob(blob, fileName) {
 function setProjectButtonsDisabled(disabled) {
   $('#saveProjectButton').disabled = disabled;
   $('#saveProjectResultButton').disabled = disabled;
+  $('#confirmSaveProject').disabled = disabled;
 }
 
-async function saveProject() {
-  if (!state.image || !state.file) return notify('请先上传图片或打开一个工程', 'error');
+function openSaveProjectDialog() {
+  if (!state.image || !state.sourceImage) return notify('请先上传图片或打开一个工程', 'error');
   if (state.generating) return notify('图纸正在生成，请完成后再保存工程');
+  const input = $('#projectNameInput');
+  input.value = normalizeProjectName(state.projectName, state.sourceImage.name);
+  $('#saveProjectDialog').showModal();
+  requestAnimationFrame(() => { input.focus(); input.select(); });
+}
+
+async function saveProject(requestedName) {
+  if (!state.image || !state.sourceImage) {
+    notify('请先上传图片或打开一个工程', 'error');
+    return false;
+  }
+  if (state.generating) {
+    notify('图纸正在生成，请完成后再保存工程');
+    return false;
+  }
   setProjectButtonsDisabled(true);
   try {
-    const imageDataUrl = await fileToDataUrl(state.file);
+    const projectName = normalizeProjectName(requestedName, state.sourceImage.name);
+    let imageDataUrl = state.sourceImage.dataUrl;
+    if (!imageDataUrl) {
+      if (!state.file) throw new Error('原始图片数据缺失，请重新上传后再保存工程');
+      imageDataUrl = await fileToDataUrl(state.file);
+      state.sourceImage = { ...state.sourceImage, dataUrl: imageDataUrl };
+    }
     const document = createProjectDocument({
+      name: projectName,
       image: {
-        name: state.file.name,
-        type: state.file.type,
-        size: state.file.size,
-        width: state.imageInfo.width,
-        height: state.imageInfo.height,
-        lastModified: state.file.lastModified,
+        name: state.sourceImage.name,
+        type: state.sourceImage.type,
+        size: state.sourceImage.size,
+        width: state.sourceImage.width,
+        height: state.sourceImage.height,
+        lastModified: state.sourceImage.lastModified,
         dataUrl: imageDataUrl,
       },
       settings: {
@@ -301,10 +320,13 @@ async function saveProject() {
       paletteCodes: state.palette.map((color) => color.code),
     });
     const blob = await createProjectBlob(serializeProjectDocument(document));
-    downloadProjectBlob(blob, getProjectFileName());
-    notify('工程已保存，可以发到其他电脑继续制作', 'success', 5000);
+    downloadProjectBlob(blob, getProjectDownloadFileName(projectName));
+    state.projectName = projectName;
+    notify(`工程“${projectName}”已保存，可以发到其他电脑继续制作`, 'success', 5000);
+    return true;
   } catch (error) {
     notify(error.message || '工程保存失败，请重试', 'error', 5000);
+    return false;
   } finally {
     setProjectButtonsDisabled(false);
   }
@@ -379,6 +401,8 @@ async function openProject(file) {
       image: decoded.image,
       imageUrl: decoded.url,
       file: imageFile,
+      sourceImage: { ...project.image },
+      projectName: project.name,
       imageInfo: { width: project.image.width, height: project.image.height, size: project.image.size },
       crop: project.settings.crop,
       transform: project.settings.transform,
@@ -452,6 +476,16 @@ async function loadFile(file) {
     if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
     Object.assign(state, {
       image, imageUrl: url, file,
+      sourceImage: {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+        lastModified: file.lastModified,
+        dataUrl: null,
+      },
+      projectName: normalizeProjectName('', file.name),
       imageInfo: { width: image.naturalWidth, height: image.naturalHeight, size: file.size },
       crop: null, transform: { rotation: 0, flipH: false, flipV: false },
       currentPattern: null, statistics: [], highlightedCode: null, dirty: false,
@@ -940,8 +974,14 @@ function bindProjectFiles() {
     input.value = '';
     await openProject(file);
   });
-  $('#saveProjectButton').addEventListener('click', saveProject);
-  $('#saveProjectResultButton').addEventListener('click', saveProject);
+  $('#saveProjectButton').addEventListener('click', openSaveProjectDialog);
+  $('#saveProjectResultButton').addEventListener('click', openSaveProjectDialog);
+  $('#cancelSaveProject').addEventListener('click', () => $('#saveProjectDialog').close());
+  $('#saveProjectForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const saved = await saveProject($('#projectNameInput').value);
+    if (saved) $('#saveProjectDialog').close();
+  });
 }
 
 function bindChoices() {

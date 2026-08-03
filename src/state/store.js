@@ -4,6 +4,8 @@ const state = {
   image: null,
   imageUrl: null,
   file: null,
+  sourceImage: null,
+  projectName: '',
   imageInfo: null,
   crop: null,
   transform: { rotation: 0, flipH: false, flipV: false },

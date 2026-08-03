@@ -4,6 +4,26 @@ export const PROJECT_VERSION = 1;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_IMAGE_DATA_URL_LENGTH = 64 * 1024 * 1024;
 
+export function normalizeProjectName(value, sourceName = '') {
+  const sourceBase = String(sourceName || '')
+    .replace(/\.perlerproj$/i, '')
+    .replace(/\.[^.]+$/, '');
+  const candidate = String(value || '')
+    .trim()
+    .replace(/\.perlerproj$/i, '')
+    .trim() || sourceBase || '拼豆工程';
+  const normalized = candidate
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
+    .replace(/\s+/g, ' ')
+    .slice(0, 80)
+    .trim();
+  return normalized || '拼豆工程';
+}
+
+export function getProjectDownloadFileName(projectName, sourceName = '') {
+  return `${normalizeProjectName(projectName, sourceName)}.perlerproj`;
+}
+
 function fail(message) {
   throw new Error(message);
 }
@@ -164,7 +184,7 @@ function normalizePreferences(preferences, hasPattern) {
   };
 }
 
-export function createProjectDocument({ image, settings, pattern, preferences, paletteCodes }) {
+export function createProjectDocument({ name, image, settings, pattern, preferences, paletteCodes }) {
   const patternDocument = pattern ? {
     width: pattern.width,
     height: pattern.height,
@@ -175,6 +195,7 @@ export function createProjectDocument({ image, settings, pattern, preferences, p
   return {
     format: PROJECT_FORMAT,
     version: PROJECT_VERSION,
+    name: normalizeProjectName(name, image.name),
     savedAt: new Date().toISOString(),
     image: { ...image },
     settings: {
@@ -212,6 +233,7 @@ export function parseProjectDocument(text, { paletteCodes } = {}) {
   const pattern = normalizePattern(document.pattern, paletteCodes);
   const preferences = normalizePreferences(document.preferences, Boolean(pattern));
   return {
+    name: normalizeProjectName(document.name, image.name),
     savedAt: typeof document.savedAt === 'string' ? document.savedAt : null,
     image,
     settings,

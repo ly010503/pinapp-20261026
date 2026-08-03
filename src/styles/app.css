@@ -93,3 +93,5 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 3
 .all-colors-export-button{grid-column:1/-1;min-height:48px;padding:0 14px;border:1.5px solid var(--lavender-dark);border-radius:13px;background:var(--lavender-soft);color:var(--lavender-dark);font-weight:750}.all-colors-export-button:disabled{opacity:.45;cursor:default}
 
 .direct-style-card{grid-column:1/-1;min-height:96px}.direct-dots i:nth-child(1){background:#d6a27c}.direct-dots i:nth-child(2){background:#6da78c}.direct-dots i:nth-child(3){background:#748bb8}
+
+.save-project-dialog form{display:grid;gap:16px}.project-name-field{display:grid;gap:7px;color:var(--muted);font-size:13px}.project-name-field input{width:100%;height:50px;padding:0 13px;border:1.5px solid var(--border);border-radius:13px;background:#FCFBFD;color:var(--ink);font-size:17px}.project-name-field small{font-size:12px}.save-project-dialog .primary-button{width:100%}
