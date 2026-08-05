@@ -44,6 +44,7 @@ self.onmessage = ({ data }) => {
       reduceIsolated,
       mergeColors,
       protectDarkOutline = true,
+      allowedPaletteIndices,
       pixels: buffer,
     } = data;
     const pixels = new Uint8ClampedArray(buffer);
@@ -55,6 +56,10 @@ self.onmessage = ({ data }) => {
     const hasProtectedOutline = outlineIndex >= 0 && outlineMask?.some(Boolean);
     const raw = new Uint8Array(width * height);
     const counts = new Uint32Array(palette.length);
+    const legendAllowed = Array.isArray(allowedPaletteIndices)
+      ? [...new Set(allowedPaletteIndices)].filter((index) => Number.isInteger(index) && index >= 0 && index < palette.length)
+      : null;
+    const constrainedCandidates = legendAllowed?.length ? legendAllowed : null;
     const matchCache = new Map();
     postProgress(34, '正在分析颜色');
     for (let i = 0; i < raw.length; i += 1) {
@@ -62,13 +67,15 @@ self.onmessage = ({ data }) => {
       const key = `${pixels[offset] >> 3},${pixels[offset + 1] >> 3},${pixels[offset + 2] >> 3}`;
       let index = matchCache.get(key);
       if (index === undefined) {
-        index = nearest(rgbToLab(pixels[offset], pixels[offset + 1], pixels[offset + 2]), palette);
+        index = nearest(rgbToLab(pixels[offset], pixels[offset + 1], pixels[offset + 2]), palette, constrainedCandidates);
         matchCache.set(key, index);
       }
       raw[i] = index; counts[index] += 1;
       if (i > 0 && i % 12000 === 0) postProgress(34 + Math.round((i / raw.length) * 30), '正在匹配色卡');
     }
-    let allowed = choosePaletteIndices(counts, maxColors, raw.length, palette);
+    let allowed = constrainedCandidates
+      ? constrainedCandidates.filter((index) => counts[index] > 0)
+      : choosePaletteIndices(counts, maxColors, raw.length, palette);
     if (mergeColors) {
       const merged = [];
       for (const index of allowed) {

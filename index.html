@@ -47,7 +47,13 @@
                 <div><strong id="uploadedName"></strong><span id="uploadedMeta"></span></div>
               </div>
             </div>
-            <p class="privacy-note"><span aria-hidden="true">♡</span> 图片只在你的浏览器中处理，不会上传到服务器</p>
+            <div class="upload-divider"><span>或者粘贴作品链接</span></div>
+            <form id="linkImportForm" class="link-import-form">
+              <textarea id="linkImportInput" rows="3" maxlength="2000" placeholder="支持完整分享文案、抖音图文链接或小红书图文笔记链接" aria-label="抖音或小红书作品链接"></textarea>
+              <button id="resolveLinkButton" type="submit">读取链接图片</button>
+            </form>
+            <p id="linkImportHint" class="link-import-hint">仅支持公开图文作品；视频作品暂不支持。</p>
+            <p class="privacy-note"><span aria-hidden="true">♡</span> 相册图片在浏览器本地处理；链接图片仅临时转发，不会保存</p>
           </article>
 
           <div id="settingsArea" hidden>
@@ -59,6 +65,10 @@
                 <button data-transform="rotateRight"><span>↷</span>右旋</button>
                 <button data-transform="flipH"><span>↔</span>翻转</button>
                 <button data-transform="reset"><span>↺</span>恢复</button>
+              </div>
+              <div class="pattern-recovery-card">
+                <div><strong>上传的是现成网格图纸？</strong><span id="patternRecoveryStatus">自动数格子，并读取每一格的底色</span></div>
+                <button id="detectPatternGrid" type="button">识别现成图纸</button>
               </div>
               <button id="replaceImage" class="text-button">重新上传</button>
             </article>
@@ -189,6 +199,30 @@
       <button class="icon-close" data-close-dialog aria-label="关闭">×</button><span class="eyebrow">自定义图纸</span><h2>输入格子数量</h2>
       <div class="custom-inputs"><label>宽度<input id="customWidth" type="number" min="10" max="200" value="70" inputmode="numeric" /></label><span>×</span><label>高度<input id="customHeight" type="number" min="10" max="300" value="104" inputmode="numeric" /></label></div>
       <p id="customTotal">总计 7,280颗</p><button id="confirmCustomSize" class="primary-button">使用这个尺寸</button>
+    </dialog>
+
+    <dialog id="patternGridDialog" class="simple-dialog pattern-grid-dialog">
+      <button id="cancelPatternGrid" class="icon-close" type="button" aria-label="关闭识别结果">×</button>
+      <span class="eyebrow">已有图纸恢复</span>
+      <h2>确认识别到的格子数量</h2>
+      <canvas id="patternGridPreview" aria-label="识别到的图纸区域预览"></canvas>
+      <p id="patternGridSummary" class="pattern-grid-summary"></p>
+      <div class="custom-inputs">
+        <label>横向格数<input id="detectedGridWidth" type="number" min="10" max="200" inputmode="numeric" /></label>
+        <span>×</span>
+        <label>纵向格数<input id="detectedGridHeight" type="number" min="10" max="300" inputmode="numeric" /></label>
+      </div>
+      <small class="pattern-grid-warning">系统会按格子底色匹配 MARD 屏幕近似色；相近色号建议生成后在制作图中复核。</small>
+      <button id="confirmPatternGrid" class="primary-button" type="button">恢复为可编辑图纸</button>
+    </dialog>
+
+    <dialog id="linkImageDialog" class="simple-dialog link-image-dialog">
+      <button id="cancelLinkImages" class="icon-close" type="button" aria-label="关闭链接图片列表">×</button>
+      <span class="eyebrow">链接读取成功</span>
+      <h2 id="linkImageTitle">选择要恢复的图纸图片</h2>
+      <p id="linkImageMeta" class="link-image-meta"></p>
+      <div id="linkImageGrid" class="link-image-grid" role="list"></div>
+      <small class="pattern-grid-warning">点击图片后会自动进入网格识别；如果它不是现成图纸，也可以关闭识别弹窗，按普通图片继续生成。</small>
     </dialog>
 
     <dialog id="saveProjectDialog" class="simple-dialog save-project-dialog">

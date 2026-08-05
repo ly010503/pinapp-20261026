@@ -17,6 +17,9 @@ import {
 } from './color/manualBlankColor.js';
 import { sortPaletteByRecent, updateRecentColorCodes } from './color/recentPalette.js';
 import { createAdjustedCanvas, getGridPixels } from './image/imageProcessor.js';
+import { analyzePatternGrid, samplePatternGrid } from './image/patternGridDetector.js';
+import { detectPatternLegend } from './image/patternLegendDetector.js';
+import { downloadLinkedImage, resolveSharedLink } from './link/linkImporter.js';
 import {
   getColorStyleAdjustments,
   shouldOmitWhiteBackground,
@@ -77,6 +80,8 @@ let replacementSourceIndex = null;
 let replacementTargetIndex = null;
 let replacementCell = null;
 let replacementCells = null;
+let pendingGridRecovery = null;
+let currentLinkedPost = null;
 let recentReplacementCodes = loadRecentReplacementCodes();
 const renderer = new ResultCanvasRenderer(
   $('#resultCanvas'),
@@ -464,9 +469,9 @@ async function openProject(file) {
 }
 
 async function loadFile(file) {
-  if (!file) return;
-  if (!SUPPORTED_TYPES.includes(file.type)) return notify('请选择 JPG、PNG 或 WebP 图片', 'error');
-  if (file.size > MAX_FILE_BYTES) return notify('图片超过 40MB，请压缩后再试', 'error');
+  if (!file) return false;
+  if (!SUPPORTED_TYPES.includes(file.type)) { notify('请选择 JPG、PNG 或 WebP 图片', 'error'); return false; }
+  if (file.size > MAX_FILE_BYTES) { notify('图片超过 40MB，请压缩后再试', 'error'); return false; }
   let decoded;
   try {
     decoded = await decodeImage(file);
@@ -491,6 +496,8 @@ async function loadFile(file) {
       currentPattern: null, statistics: [], highlightedCode: null, dirty: false,
     });
     state.patternUndoHistory.length = 0;
+    pendingGridRecovery = null;
+    $('#patternRecoveryStatus').textContent = '自动数格子，并读取每一格的底色';
     generationVersion += 1;
     $('#uploadPrompt').hidden = true;
     $('#uploadedSummary').hidden = false;
@@ -506,9 +513,11 @@ async function loadFile(file) {
     setProjectButtonsDisabled(false);
     requestAnimationFrame(drawSourcePreview);
     notify('图片已读取，只会在本地处理', 'success');
+    return true;
   } catch (error) {
     if (decoded?.url) URL.revokeObjectURL(decoded.url);
     notify(error.message || '图片读取失败，请重试', 'error', 5000);
+    return false;
   }
 }
 
@@ -518,6 +527,155 @@ function updateProgress(progress) {
       : progress < 94 ? '正在整理拼豆格子……' : '图纸马上完成啦！';
   $('#progressLabel').textContent = label;
   $('#progressFill').style.width = `${Math.max(8, progress)}%`;
+}
+
+function createPatternDetectionCanvas() {
+  return createAdjustedCanvas(
+    state.image,
+    state.transform,
+    { brightness: 0, contrast: 0, saturation: 0, sharpen: 0, smoothing: 0 },
+    1800,
+    state.crop,
+  );
+}
+
+function drawPatternDetectionPreview(source, detection) {
+  const canvas = $('#patternGridPreview');
+  const context = canvas.getContext('2d');
+  canvas.width = 720;
+  canvas.height = 360;
+  context.fillStyle = '#EEE9F2';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const left = Math.max(0, detection.bounds.left);
+  const top = Math.max(0, detection.bounds.top);
+  const right = Math.min(source.width, detection.bounds.right);
+  const bottom = Math.min(source.height, detection.bounds.bottom);
+  const sourceWidth = Math.max(1, right - left);
+  const sourceHeight = Math.max(1, bottom - top);
+  const scale = Math.min((canvas.width - 20) / sourceWidth, (canvas.height - 20) / sourceHeight);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  const x = (canvas.width - width) / 2;
+  const y = (canvas.height - height) / 2;
+  context.imageSmoothingEnabled = false;
+  context.drawImage(source, left, top, sourceWidth, sourceHeight, x, y, width, height);
+  context.strokeStyle = '#7864C3';
+  context.lineWidth = 3;
+  context.strokeRect(x, y, width, height);
+}
+
+async function detectExistingPatternGrid() {
+  if (!state.image) return notify('请先上传一张图纸截图', 'error');
+  if (state.generating) return;
+  const button = $('#detectPatternGrid');
+  button.disabled = true;
+  button.textContent = '正在识别…';
+  $('#patternRecoveryStatus').textContent = '正在寻找规则网格和坐标栏';
+  try {
+    await new Promise(requestAnimationFrame);
+    const canvas = createPatternDetectionCanvas();
+    const imageData = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height);
+    const detection = analyzePatternGrid(imageData);
+    const recoveryPalette = state.palette.filter((color) => !color.manualOnly);
+    const legend = detectPatternLegend(imageData, detection, recoveryPalette);
+    pendingGridRecovery = { canvas, imageData, detection, legend };
+    $('#detectedGridWidth').value = detection.width;
+    $('#detectedGridHeight').value = detection.height;
+    const confidence = Math.round(detection.confidence * 100);
+    const removedRows = detection.removedCoordinateRows.top + detection.removedCoordinateRows.bottom;
+    const removedColumns = detection.removedCoordinateColumns.left + detection.removedCoordinateColumns.right;
+    const removed = removedRows + removedColumns;
+    const legendSummary = legend
+      ? `检测到图例 ${legend.swatchCount} 个色块，将只在图例对应的 ${legend.paletteCodes.length} 个色号中匹配。`
+      : '未检测到可靠图例，将继续使用原有的全色卡识别。';
+    $('#patternGridSummary').textContent = `检测到 ${detection.width} × ${detection.height} 格，网格可信度 ${confidence}%${removed ? `，已排除 ${removedRows} 行、${removedColumns} 列坐标栏` : ''}。${legendSummary}请核对后再恢复。`;
+    $('#patternRecoveryStatus').textContent = `已检测到 ${detection.width} × ${detection.height} 格，等待确认`;
+    drawPatternDetectionPreview(canvas, detection);
+    $('#patternGridDialog').showModal();
+  } catch (error) {
+    pendingGridRecovery = null;
+    $('#patternRecoveryStatus').textContent = '没有找到稳定网格，可先裁剪到图纸区域再试';
+    notify(error.message || '没有识别到规则网格，请先裁剪掉多余界面后重试', 'error', 6000);
+  } finally {
+    button.disabled = false;
+    button.textContent = '识别现成图纸';
+  }
+}
+
+function setLinkImportHint(message, type = '') {
+  const hint = $('#linkImportHint');
+  hint.textContent = message;
+  hint.classList.toggle('error', type === 'error');
+  hint.classList.toggle('success', type === 'success');
+}
+
+function renderLinkedImages(result) {
+  const grid = $('#linkImageGrid');
+  grid.replaceChildren();
+  result.images.forEach((image, index) => {
+    const button = makeButton('link-image-card', { type: 'button', role: 'listitem', 'aria-label': `导入第 ${index + 1} 张图片` });
+    button.dataset.linkImageIndex = index;
+    const preview = document.createElement('img');
+    preview.src = image.url;
+    preview.alt = `作品图片 ${index + 1}`;
+    preview.loading = index < 4 ? 'eager' : 'lazy';
+    const label = document.createElement('span');
+    label.textContent = `导入并识别第 ${index + 1} 张`;
+    button.append(preview, label);
+    grid.append(button);
+  });
+  $('#linkImageTitle').textContent = result.title || '选择要恢复的图纸图片';
+  const platformName = result.platform === 'xiaohongshu' ? '小红书' : '抖音';
+  $('#linkImageMeta').textContent = `${platformName}图文作品 · 共找到 ${result.images.length} 张图片${result.author ? ` · ${result.author}` : ''}`;
+}
+
+async function resolveLinkImport(event) {
+  event.preventDefault();
+  if (state.generating) return;
+  const text = $('#linkImportInput').value;
+  const button = $('#resolveLinkButton');
+  button.disabled = true;
+  button.textContent = '正在读取…';
+  setLinkImportHint('正在打开分享链接并查找公开图片…');
+  try {
+    currentLinkedPost = await resolveSharedLink(text);
+    renderLinkedImages(currentLinkedPost);
+    setLinkImportHint(`已找到 ${currentLinkedPost.images.length} 张图片，请选择要恢复的图纸`, 'success');
+    $('#linkImageDialog').showModal();
+  } catch (error) {
+    currentLinkedPost = null;
+    setLinkImportHint(error.message || '链接读取失败，请直接上传截图', 'error');
+    notify(error.message || '链接读取失败，请直接上传截图', 'error', 6000);
+  } finally {
+    button.disabled = false;
+    button.textContent = '读取链接图片';
+  }
+}
+
+async function importLinkedImage(index) {
+  const image = currentLinkedPost?.images?.[index];
+  if (!image) return notify('图片列表已经失效，请重新读取链接', 'error');
+  const buttons = $$('.link-image-card');
+  buttons.forEach((button) => { button.disabled = true; });
+  const selected = buttons[index];
+  const label = selected?.querySelector('span');
+  if (label) label.textContent = '正在导入…';
+  try {
+    const file = await downloadLinkedImage(image, currentLinkedPost.title, index);
+    const loaded = await loadFile(file);
+    if (!loaded) return;
+    $('#linkImageDialog').close();
+    setLinkImportHint(`已导入第 ${index + 1} 张图片，正在识别网格`, 'success');
+    await detectExistingPatternGrid();
+  } catch (error) {
+    notify(error.message || '图片导入失败，请选择其他图片', 'error', 6000);
+  } finally {
+    buttons.forEach((button, buttonIndex) => {
+      button.disabled = false;
+      const itemLabel = button.querySelector('span');
+      if (itemLabel) itemLabel.textContent = `导入并识别第 ${buttonIndex + 1} 张`;
+    });
+  }
 }
 
 function renderColorList() {
@@ -630,28 +788,26 @@ function handlePatternCellTap(cell, { shiftKey = false, ctrlKey = false, metaKey
   openReplaceCellDialog(cell);
 }
 
-async function generate() {
-  if (!state.image) return notify('请先上传一张图片', 'error');
+async function generatePreparedPattern({ pixels, width, height, recovery = false, allowedPaletteIndices = null }) {
   if (state.generating) return;
   state.generating = true;
   const version = ++generationVersion;
   const button = $('#generateButton'); button.disabled = true;
+  $('#detectPatternGrid').disabled = true;
   $('#progressSection').hidden = false;
   $('#progressFill').style.width = '8%'; updateProgress(8);
   try {
     await new Promise(requestAnimationFrame);
-    const adjusted = createAdjustedCanvas(state.image, state.transform, getColorStyleAdjustments(state.adjustments, state.colorStyle), 1800, state.crop);
-    const { width, height } = state.currentSize;
-    const pixels = getGridPixels(adjusted, width, height);
     const pattern = await generatePattern({
       pixels, width, height,
       palette: state.palette
         .filter((color) => !color.manualOnly)
         .map(({ code, name, hex, rgb }) => ({ code, name, hex, rgb })),
-      maxColors: state.maxColors,
-      reduceIsolated: true,
-      mergeColors: true,
-      protectDarkOutline: shouldProtectDarkOutline(state.colorStyle),
+      maxColors: recovery ? Math.max(48, state.maxColors) : state.maxColors,
+      reduceIsolated: recovery ? false : state.options.reduceIsolated,
+      mergeColors: !allowedPaletteIndices?.length,
+      protectDarkOutline: recovery ? false : shouldProtectDarkOutline(state.colorStyle),
+      allowedPaletteIndices,
       onProgress: updateProgress,
     });
     if (version !== generationVersion) return;
@@ -675,16 +831,58 @@ async function generate() {
     updateProgress(100);
     renderer.rebuild(); renderer.fit(); renderStatistics();
     requestAnimationFrame(() => $('#resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' }));
-    notify('图纸生成完成啦', 'success');
+    notify(recovery ? `已恢复 ${width} × ${height} 格图纸，可以逐格改色` : '图纸生成完成啦', 'success', recovery ? 5000 : 3000);
   } catch (error) {
-    notify(error.message || '生成失败，请重新生成', 'error', 5000);
+    notify(error.message || (recovery ? '图纸恢复失败，请核对格数后重试' : '生成失败，请重新生成'), 'error', 5000);
     $('#dirtyNotice').hidden = false;
-    $('#dirtyNotice').textContent = '生成失败，请点击下方按钮重新生成';
+    $('#dirtyNotice').textContent = recovery ? '恢复失败，可以重新识别或按普通图片生成' : '生成失败，请点击下方按钮重新生成';
   } finally {
     state.generating = false; button.disabled = false;
+    $('#detectPatternGrid').disabled = false;
     button.lastChild.textContent = state.currentPattern ? ' 重新生成拼豆图纸' : ' 生成我的拼豆图纸';
     setTimeout(() => { if (!state.generating) $('#progressSection').hidden = true; }, 700);
   }
+}
+
+async function generate() {
+  if (!state.image) return notify('请先上传一张图片', 'error');
+  try {
+    const adjusted = createAdjustedCanvas(state.image, state.transform, getColorStyleAdjustments(state.adjustments, state.colorStyle), 1800, state.crop);
+    const { width, height } = state.currentSize;
+    const pixels = getGridPixels(adjusted, width, height);
+    await generatePreparedPattern({ pixels, width, height });
+  } catch (error) {
+    notify(error.message || '图片采样失败，请重新上传后再试', 'error', 5000);
+  }
+}
+
+async function confirmPatternGridRecovery() {
+  if (!pendingGridRecovery) return notify('识别结果已经失效，请重新识别', 'error');
+  const width = Number($('#detectedGridWidth').value);
+  const height = Number($('#detectedGridHeight').value);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 10 || width > 200 || height < 10 || height > 300) {
+    return notify('横向需为10～200格，纵向需为10～300格', 'error');
+  }
+  const { imageData, detection, legend } = pendingGridRecovery;
+  let pixels;
+  try {
+    pixels = samplePatternGrid(imageData, detection, width, height, { avoidCenterText: Boolean(legend) });
+  } catch (error) {
+    return notify(error.message || '逐格取色失败，请重新识别', 'error');
+  }
+  state.currentSize = { width, height };
+  state.colorStyle = 'direct';
+  if (state.maxColors < 48) state.maxColors = 48;
+  syncRestoredChoices();
+  $('#patternGridDialog').close();
+  $('#patternRecoveryStatus').textContent = `已按 ${width} × ${height} 格恢复，可在制作图中改单格颜色`;
+  await generatePreparedPattern({
+    pixels,
+    width,
+    height,
+    recovery: true,
+    allowedPaletteIndices: legend?.paletteIndices || null,
+  });
 }
 
 function changeTransform(action) {
@@ -696,6 +894,8 @@ function changeTransform(action) {
     state.transform = { rotation: 0, flipH: false, flipV: false };
     state.crop = null; $('#cropBadge').hidden = true;
   }
+  pendingGridRecovery = null;
+  $('#patternRecoveryStatus').textContent = '图片方向已变化，请重新识别网格';
   markDirty(); drawSourcePreview();
 }
 
@@ -966,6 +1166,16 @@ function bindUpload() {
   zone.addEventListener('drop', (event) => loadFile(event.dataTransfer.files[0]));
 }
 
+function bindLinkImport() {
+  $('#linkImportForm').addEventListener('submit', resolveLinkImport);
+  $('#cancelLinkImages').addEventListener('click', () => $('#linkImageDialog').close());
+  $('#linkImageGrid').addEventListener('click', (event) => {
+    const button = event.target.closest('.link-image-card');
+    if (!button) return;
+    importLinkedImage(Number(button.dataset.linkImageIndex));
+  });
+}
+
 function bindProjectFiles() {
   const input = $('#projectFileInput');
   $('#openProjectButton').addEventListener('click', () => input.click());
@@ -1008,11 +1218,21 @@ const cropper = new CropperController({
   dialog: $('#cropDialog'), image: $('#cropImage'), ratioButtons: $$('.crop-ratios button'),
   confirmButton: $('#confirmCrop'), cancelButton: $('#cancelCrop'),
   getPatternRatio: () => state.currentSize.width / state.currentSize.height,
-  onConfirm: (crop) => { state.crop = crop; $('#cropBadge').hidden = false; markDirty(); drawSourcePreview(); },
+  onConfirm: (crop) => {
+    state.crop = crop;
+    pendingGridRecovery = null;
+    $('#patternRecoveryStatus').textContent = '裁剪已更新，可以开始识别网格';
+    $('#cropBadge').hidden = false;
+    markDirty();
+    drawSourcePreview();
+  },
 });
 
 function bindDialogs() {
   $('#cropButton').addEventListener('click', () => cropper.open(state.imageUrl, state.crop));
+  $('#detectPatternGrid').addEventListener('click', detectExistingPatternGrid);
+  $('#cancelPatternGrid').addEventListener('click', () => $('#patternGridDialog').close());
+  $('#confirmPatternGrid').addEventListener('click', confirmPatternGridRecovery);
   const width = $('#customWidth'), height = $('#customHeight');
   const updateTotal = () => { $('#customTotal').textContent = `总计 ${number.format((Number(width.value) || 0) * (Number(height.value) || 0))}颗`; };
   width.addEventListener('input', updateTotal); height.addEventListener('input', updateTotal);
@@ -1136,7 +1356,7 @@ function bindResults() {
   });
 }
 
-buildChoices(); bindUpload(); bindProjectFiles(); bindChoices(); bindDialogs(); bindResults();
+buildChoices(); bindUpload(); bindLinkImport(); bindProjectFiles(); bindChoices(); bindDialogs(); bindResults();
 $$('[data-transform]').forEach((button) => button.addEventListener('click', () => changeTransform(button.dataset.transform)));
 $('#generateButton').addEventListener('click', generate);
 window.addEventListener('resize', () => { if (state.image) drawSourcePreview(); });
