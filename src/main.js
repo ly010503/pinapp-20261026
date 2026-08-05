@@ -38,8 +38,10 @@ import {
   getPatternTapIntent,
   getRectangularSelectionPositions,
 } from './pattern/cellSelection.js';
+import { cropPattern, getPatternCropInsets } from './pattern/patternCrop.js';
 import {
   createPatternSnapshot,
+  createPatternStateSnapshot,
   pushPatternSnapshot,
   restorePatternSnapshot,
 } from './pattern/undoHistory.js';
@@ -1069,7 +1071,98 @@ function recalculatePatternStatistics() {
   );
 }
 
+function updatePatternCropSummary() {
+  const pattern = state.currentPattern;
+  const summary = $('#patternCropSummary');
+  const confirm = $('#confirmPatternCrop');
+  if (!pattern) {
+    summary.textContent = '当前还没有可以裁切的图纸。';
+    summary.classList.add('error');
+    confirm.disabled = true;
+    return;
+  }
+
+  const width = Number($('#patternCropWidth').value);
+  const height = Number($('#patternCropHeight').value);
+  const valid = Number.isInteger(width)
+    && Number.isInteger(height)
+    && width >= 10
+    && height >= 10
+    && width <= pattern.width
+    && height <= pattern.height;
+  if (!valid) {
+    summary.textContent = `目标宽度需为10～${pattern.width}格，目标高度需为10～${pattern.height}格。`;
+    summary.classList.add('error');
+    confirm.disabled = true;
+    return;
+  }
+  if (width === pattern.width && height === pattern.height) {
+    summary.textContent = '请把宽度或高度至少减小1格。';
+    summary.classList.add('error');
+    confirm.disabled = true;
+    return;
+  }
+
+  const insets = getPatternCropInsets(pattern.width, pattern.height, width, height);
+  summary.textContent = `将裁成 ${width} × ${height}格：左${insets.left}、右${insets.right}、上${insets.top}、下${insets.bottom}格。`;
+  summary.classList.remove('error');
+  confirm.disabled = false;
+}
+
+function openPatternCropDialog() {
+  const pattern = state.currentPattern;
+  if (!pattern) return notify('请先生成或恢复一张图纸', 'error');
+  $('#patternCropCurrent').textContent = `${pattern.width} × ${pattern.height}格`;
+  const width = $('#patternCropWidth');
+  const height = $('#patternCropHeight');
+  width.max = String(pattern.width);
+  height.max = String(pattern.height);
+  width.value = String(pattern.width);
+  height.value = String(pattern.height);
+  updatePatternCropSummary();
+  $('#patternCropDialog').showModal();
+}
+
+function applyPatternCrop() {
+  const currentPattern = state.currentPattern;
+  if (!currentPattern) return notify('当前图纸已经失效，请重新生成', 'error');
+  const width = Number($('#patternCropWidth').value);
+  const height = Number($('#patternCropHeight').value);
+  const snapshot = createPatternStateSnapshot(currentPattern);
+  let result;
+  try {
+    result = cropPattern(currentPattern, width, height);
+  } catch (error) {
+    updatePatternCropSummary();
+    return notify(error.message || '图纸裁切失败', 'error');
+  }
+
+  state.currentPattern = result.pattern;
+  state.currentSize = { width, height };
+  if (!recalculatePatternStatistics()) {
+    state.currentPattern = currentPattern;
+    state.currentSize = { width: currentPattern.width, height: currentPattern.height };
+    recalculatePatternStatistics();
+    return notify('裁切后的颜色统计校验失败，图纸没有被修改', 'error');
+  }
+
+  pushPatternSnapshot(state.patternUndoHistory, snapshot, PATTERN_UNDO_LIMIT);
+  state.highlightedCode = null;
+  state.viewport = { zoom: 1, x: 0, y: 0 };
+  clearSelectedCells({ redraw: false });
+  showAllColors = state.statistics.length > 8 && showAllColors;
+  syncRestoredChoices();
+  renderStatistics();
+  renderer.rebuild();
+  renderer.fit();
+  $('#patternCropDialog').close();
+  const { left, right, top, bottom } = result.insets;
+  notify(`图纸已裁成 ${width} × ${height}格（左${left}、右${right}、上${top}、下${bottom}）`, 'success', 5000);
+}
+
 function undoLastPatternEdit() {
+  const previousWidth = state.currentPattern?.width;
+  const previousHeight = state.currentPattern?.height;
   if (!state.currentPattern || !restorePatternSnapshot(state.patternUndoHistory, state.currentPattern)) {
     notify('还没有可撤销的图纸修改');
     return;
@@ -1080,9 +1173,15 @@ function undoLastPatternEdit() {
   }
   state.highlightedCode = null;
   clearSelectedCells({ redraw: false });
+  const sizeChanged = previousWidth !== state.currentPattern.width || previousHeight !== state.currentPattern.height;
+  if (sizeChanged) {
+    state.currentSize = { width: state.currentPattern.width, height: state.currentPattern.height };
+    syncRestoredChoices();
+  }
   showAllColors = state.statistics.length > 8 && showAllColors;
   renderStatistics();
   renderer.rebuild();
+  if (sizeChanged) renderer.fit();
   notify('已撤销上一次图纸修改', 'success');
 }
 
@@ -1230,6 +1329,11 @@ const cropper = new CropperController({
 
 function bindDialogs() {
   $('#cropButton').addEventListener('click', () => cropper.open(state.imageUrl, state.crop));
+  $('#openPatternCrop').addEventListener('click', openPatternCropDialog);
+  $('#cancelPatternCrop').addEventListener('click', () => $('#patternCropDialog').close());
+  $('#patternCropWidth').addEventListener('input', updatePatternCropSummary);
+  $('#patternCropHeight').addEventListener('input', updatePatternCropSummary);
+  $('#confirmPatternCrop').addEventListener('click', applyPatternCrop);
   $('#detectPatternGrid').addEventListener('click', detectExistingPatternGrid);
   $('#cancelPatternGrid').addEventListener('click', () => $('#patternGridDialog').close());
   $('#confirmPatternGrid').addEventListener('click', confirmPatternGridRecovery);

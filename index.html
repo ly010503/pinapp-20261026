@@ -60,7 +60,7 @@
             <article class="card edit-card">
               <div class="step-heading"><span class="step-number mint">2</span><div><h2>简单编辑一下</h2><p>让主体更突出，图纸会更好看</p></div></div>
               <div class="edit-actions">
-                <button id="cropButton"><span>⌗</span>裁剪</button>
+                <button id="cropButton"><span>⌗</span>裁剪原图</button>
                 <button data-transform="rotateLeft"><span>↶</span>左旋</button>
                 <button data-transform="rotateRight"><span>↷</span>右旋</button>
                 <button data-transform="flipH"><span>↔</span>翻转</button>
@@ -149,6 +149,10 @@
           </div>
           <p class="gesture-hint">轻点单格换色 · Ctrl+点击逐格多选 · Shift+点击两点框选 · 多选后轻点已选色块批量换色 · Ctrl+Z撤销</p>
         </div>
+        <div class="pattern-crop-bar">
+          <div><strong>图纸两侧有空白？</strong><span>修改完成后直接裁掉网格行列，不会重新识别颜色</span></div>
+          <button id="openPatternCrop" type="button">✂ 裁切图纸</button>
+        </div>
 
         <article class="card stats-card">
           <div class="stats-title"><div><span class="eyebrow">本次图纸</span><h2>用豆清单</h2></div><span id="actualColorBadge" class="actual-color-badge"></span></div>
@@ -199,6 +203,22 @@
       <button class="icon-close" data-close-dialog aria-label="关闭">×</button><span class="eyebrow">自定义图纸</span><h2>输入格子数量</h2>
       <div class="custom-inputs"><label>宽度<input id="customWidth" type="number" min="10" max="200" value="70" inputmode="numeric" /></label><span>×</span><label>高度<input id="customHeight" type="number" min="10" max="300" value="104" inputmode="numeric" /></label></div>
       <p id="customTotal">总计 7,280颗</p><button id="confirmCustomSize" class="primary-button">使用这个尺寸</button>
+    </dialog>
+
+    <dialog id="patternCropDialog" class="simple-dialog pattern-crop-dialog">
+      <button id="cancelPatternCrop" class="icon-close" type="button" aria-label="关闭图纸裁切">×</button>
+      <span class="eyebrow">成品图纸裁边</span>
+      <h2>裁掉图纸四周的空白格</h2>
+      <p class="pattern-crop-intro">只删除现有网格的行列，已经修改好的颜色和色号会原样保留。</p>
+      <div class="pattern-crop-current"><span>当前尺寸</span><strong id="patternCropCurrent">0 × 0格</strong></div>
+      <div class="custom-inputs">
+        <label>目标宽度<input id="patternCropWidth" type="number" min="10" max="200" inputmode="numeric" /></label>
+        <span>×</span>
+        <label>目标高度<input id="patternCropHeight" type="number" min="10" max="300" inputmode="numeric" /></label>
+      </div>
+      <p id="patternCropSummary" class="pattern-crop-summary" aria-live="polite"></p>
+      <small class="pattern-crop-rule">左右、上下居中裁切；遇到奇数时，左边或上边会多裁一格。可用 Ctrl+Z 撤销。</small>
+      <button id="confirmPatternCrop" class="primary-button" type="button">确认裁切图纸</button>
     </dialog>
 
     <dialog id="patternGridDialog" class="simple-dialog pattern-grid-dialog">

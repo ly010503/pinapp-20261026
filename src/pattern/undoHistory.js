@@ -3,8 +3,32 @@ export function createPatternSnapshot(pattern) {
   return pattern.indices.slice();
 }
 
+export function createPatternStateSnapshot(pattern) {
+  if (!Number.isInteger(pattern?.width)
+    || !Number.isInteger(pattern?.height)
+    || !(pattern.indices instanceof Uint8Array)) return null;
+  return {
+    width: pattern.width,
+    height: pattern.height,
+    indices: pattern.indices.slice(),
+    sourcePixels: pattern.sourcePixels?.slice?.() ?? null,
+    backgroundMask: pattern.backgroundMask?.slice?.() ?? null,
+  };
+}
+
+function isPatternStateSnapshot(snapshot) {
+  return snapshot
+    && Number.isInteger(snapshot.width)
+    && Number.isInteger(snapshot.height)
+    && snapshot.width > 0
+    && snapshot.height > 0
+    && snapshot.indices instanceof Uint8Array
+    && snapshot.indices.length === snapshot.width * snapshot.height;
+}
+
 export function pushPatternSnapshot(history, snapshot, limit = 20) {
-  if (!Array.isArray(history) || !(snapshot instanceof Uint8Array)) return false;
+  if (!Array.isArray(history)
+    || (!(snapshot instanceof Uint8Array) && !isPatternStateSnapshot(snapshot))) return false;
   history.push(snapshot);
   while (history.length > Math.max(1, limit)) history.shift();
   return true;
@@ -16,6 +40,14 @@ export function restorePatternSnapshot(history, pattern) {
     const snapshot = history.pop();
     if (snapshot instanceof Uint8Array && snapshot.length === pattern.indices.length) {
       pattern.indices.set(snapshot);
+      return true;
+    }
+    if (isPatternStateSnapshot(snapshot)) {
+      pattern.width = snapshot.width;
+      pattern.height = snapshot.height;
+      pattern.indices = snapshot.indices.slice();
+      pattern.sourcePixels = snapshot.sourcePixels?.slice?.() ?? null;
+      pattern.backgroundMask = snapshot.backgroundMask?.slice?.() ?? null;
       return true;
     }
   }
