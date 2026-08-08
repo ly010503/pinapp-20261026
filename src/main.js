@@ -1254,7 +1254,7 @@ function replaceCellWithBlank(cell) {
 }
 
 function bindUpload() {
-  const zone = $('#uploadZone'), input = $('#fileInput');
+  const zone = $('#uploadZone'), input = $('#fileInput'), patternInput = $('#patternFileInput');
   const open = () => input.click();
   zone.addEventListener('click', (event) => { if (event.target !== input) open(); });
   zone.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
@@ -1263,6 +1263,12 @@ function bindUpload() {
   ['dragenter', 'dragover'].forEach((type) => zone.addEventListener(type, (event) => { event.preventDefault(); zone.classList.add('drag-over'); }));
   ['dragleave', 'drop'].forEach((type) => zone.addEventListener(type, (event) => { event.preventDefault(); zone.classList.remove('drag-over'); }));
   zone.addEventListener('drop', (event) => loadFile(event.dataTransfer.files[0]));
+  $('#uploadPatternImage').addEventListener('click', () => patternInput.click());
+  patternInput.addEventListener('change', async () => {
+    const file = patternInput.files[0];
+    patternInput.value = '';
+    if (await loadFile(file)) await detectExistingPatternGrid();
+  });
 }
 
 function bindLinkImport() {

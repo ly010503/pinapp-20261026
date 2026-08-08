@@ -47,6 +47,11 @@
                 <div><strong id="uploadedName"></strong><span id="uploadedMeta"></span></div>
               </div>
             </div>
+            <div class="pattern-upload-entry">
+              <div><strong>已经有网格图纸截图？</strong><span>上传后直接数格子、读取底色和图例，不会先按普通照片生成</span></div>
+              <button id="uploadPatternImage" type="button">▦ 上传图纸并识别</button>
+              <input id="patternFileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+            </div>
             <div class="upload-divider"><span>或者粘贴作品链接</span></div>
             <form id="linkImportForm" class="link-import-form">
               <textarea id="linkImportInput" rows="3" maxlength="2000" placeholder="支持完整分享文案、抖音图文链接或小红书图文笔记链接" aria-label="抖音或小红书作品链接"></textarea>
