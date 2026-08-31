@@ -1,0 +1,10 @@
+.git
+.sites
+.skill-validator-pyyaml
+.playwright-cli
+.wrangler
+.npm-cache
+dist
+node_modules
+skills
+workflow-output

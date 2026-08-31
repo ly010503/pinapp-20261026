@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzePatternGrid, samplePatternGrid } from '../src/image/patternGridDetector.js';
+import {
+  analyzePatternGrid,
+  detectPatternOccupiedCells,
+  samplePatternGrid,
+} from '../src/image/patternGridDetector.js';
 
 function createSyntheticGrid({ columns = 18, rows = 22, cell = 8, headerRows = true } = {}) {
   const marginX = 17;
@@ -54,6 +58,42 @@ test('逐格取色会避开网格线和格内深色小字', () => {
   assert.equal(pixels.length, 12 * 14 * 4);
   assert.deepEqual([...pixels.slice(0, 3)], [42, 74, 125]);
   assert.deepEqual([...pixels.slice(4, 7)], [232, 184, 198]);
+});
+
+test('恢复现成图纸时会从格角取底色并避开大号色号文字', () => {
+  const imageData = createSyntheticGrid({ columns: 12, rows: 14, headerRows: false });
+  const detection = analyzePatternGrid(imageData);
+  const { data, width } = imageData;
+  const marginX = 17, marginY = 29;
+  for (let y = marginY + 2; y <= marginY + 5; y += 1) {
+    for (let x = marginX + 2; x <= marginX + 5; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 15; data[offset + 1] = 15; data[offset + 2] = 15;
+    }
+  }
+  const pixels = samplePatternGrid(imageData, detection, 12, 14, { avoidCenterText: true });
+  assert.deepEqual([...pixels.slice(0, 3)], [42, 74, 125]);
+});
+
+test('按纸张底色与格内文字区分空格和白色豆子', () => {
+  const width = 32, height = 32, cell = 8;
+  const data = new Uint8ClampedArray(width * height * 4).fill(255);
+  const imageData = { width, height, data };
+  const detection = { width: 4, height: 4, bounds: { left: 0, top: 0, right: width, bottom: height } };
+  // 左上空格放一块低对比水印，不能误判为豆子。
+  for (let y = 3; y <= 4; y += 1) for (let x = 3; x <= 4; x += 1) {
+    const offset = (y * width + x) * 4;
+    data[offset] = 220; data[offset + 1] = 220; data[offset + 2] = 220;
+  }
+  // 中间格同样是白底，但中央的高对比色号文字表示它是一颗白色豆子。
+  for (let y = cell + 2; y <= cell + 5; y += 1) for (let x = cell + 2; x <= cell + 5; x += 1) {
+    const offset = (y * width + x) * 4;
+    data[offset] = 25; data[offset + 1] = 25; data[offset + 2] = 25;
+  }
+  const pixels = samplePatternGrid(imageData, detection, 4, 4, { avoidCenterText: true });
+  const occupied = detectPatternOccupiedCells(imageData, detection, 4, 4, { pixels });
+  assert.equal(occupied[0], 0, '低对比水印所在空格应保持留白');
+  assert.equal(occupied[5], 1, '带高对比色号文字的白色豆子应保留');
 });
 
 test('不会把隔行加粗的网格线误认为双倍格子', () => {

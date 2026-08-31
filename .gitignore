@@ -5,3 +5,9 @@ dist/
 output/
 vite-*.log
 .wrangler/
+
+.vercel
+.browser-profiles/
+.sites/
+.skill-validator-pyyaml/
+workflow-output/

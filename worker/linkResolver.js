@@ -1,5 +1,5 @@
 const PLATFORM_HOSTS = {
-  xiaohongshu: ['xiaohongshu.com', 'xhslink.com'],
+  xiaohongshu: ['xiaohongshu.com', 'xhslink.com', 'xhslink.cn'],
   douyin: ['douyin.com', 'iesdouyin.com'],
 };
 
@@ -12,6 +12,11 @@ const PAGE_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
   'Accept-Language': 'zh-CN,zh;q=0.9',
   Accept: 'text/html,application/xhtml+xml',
+};
+
+const DOUYIN_SEO_HEADERS = {
+  ...PAGE_HEADERS,
+  'User-Agent': 'Mozilla/5.0 (compatible; Baiduspider/2.0)',
 };
 
 function hostMatches(hostname, allowed) {
@@ -82,6 +87,11 @@ function cleanTitle(value) {
   return decodeHtml(value).replace(/\s*[-_|｜].*?(小红书|抖音).*$/i, '').trim().slice(0, 100);
 }
 
+function titleContent(html) {
+  const match = String(html || '').match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? cleanTitle(match[1].replace(/<[^>]*>/g, ' ')) : '';
+}
+
 function isLikelyVideo(html, finalUrl, platform) {
   if (platform === 'douyin' && /\/(video|shipin)\//i.test(finalUrl.pathname)) return true;
   const type = metaContent(html, 'og:type').toLowerCase();
@@ -142,6 +152,87 @@ function parseDouyinRouterData(html) {
   };
 }
 
+function parseDouyinSeoData(html) {
+  const images = [];
+  const seen = new Set();
+  for (const candidate of normalizedImageCandidates(html)) {
+    const url = validateMediaUrl(candidate, 'douyin');
+    if (!url) continue;
+    const marker = `${url.pathname}${url.search}`.toLowerCase();
+    if (!marker.includes('tplv-dy-aweme-images') && url.searchParams.get('biz_tag') !== 'aweme_images') continue;
+    const key = url.pathname.split('~')[0];
+    if (seen.has(key)) continue;
+    seen.add(key);
+    images.push(url.href);
+  }
+  if (!images.length) return null;
+  return {
+    platform: 'douyin',
+    title: titleContent(html) || '链接图纸',
+    author: cleanTitle(metaContent(html, 'author')),
+    images: images.slice(0, 20),
+  };
+}
+
+function extractJsonObject(text, startIndex) {
+  const start = text.indexOf('{', startIndex);
+  if (start < 0) return '';
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, index + 1);
+    }
+  }
+  return '';
+}
+
+function parseXiaohongshuInitialState(html) {
+  const stateMarker = 'window.__INITIAL_STATE__=';
+  const stateStart = html.indexOf(stateMarker);
+  if (stateStart < 0) return null;
+  const stateText = html.slice(stateStart + stateMarker.length);
+  const noteMatch = stateText.match(/"data"\s*:\s*\{\s*"noteData"\s*:\s*/);
+  if (!noteMatch) return null;
+  const noteText = extractJsonObject(stateText, noteMatch.index + noteMatch[0].length);
+  if (!noteText) return null;
+  let note;
+  try {
+    note = JSON.parse(noteText);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(note.imageList) || !note.imageList.length) return null;
+  const images = note.imageList.map((image) => {
+    const sceneImages = Array.isArray(image?.infoList)
+      ? image.infoList.filter((item) => item?.imageScene === 'H5_DTL').map((item) => item.url)
+      : [];
+    const candidates = [...sceneImages, image?.url, ...(image?.infoList || []).map((item) => item?.url)];
+    return candidates.map((candidate) => validateMediaUrl(candidate, 'xiaohongshu')).find(Boolean)?.href;
+  }).filter(Boolean);
+  if (!images.length) return null;
+  return {
+    platform: 'xiaohongshu',
+    title: cleanTitle(note.title || String(note.desc || '').split(/\r?\n/)[0] || '链接图纸'),
+    author: cleanTitle(note.user?.nickname || note.user?.nickName || ''),
+    images: images.slice(0, 20),
+  };
+}
+
 function imageScore(url, position) {
   const text = `${url.hostname}${url.pathname}`.toLowerCase();
   let score = 1000 - position;
@@ -154,6 +245,12 @@ function imageScore(url, position) {
 export function parsePostHtml(html, finalUrl, platform) {
   if (platform === 'douyin') {
     const structured = parseDouyinRouterData(html);
+    if (structured) return structured;
+    const seoData = parseDouyinSeoData(html);
+    if (seoData) return seoData;
+  }
+  if (platform === 'xiaohongshu') {
+    const structured = parseXiaohongshuInitialState(html);
     if (structured) return structured;
   }
   if (isLikelyVideo(html, finalUrl, platform)) {
@@ -188,11 +285,11 @@ export function parsePostHtml(html, finalUrl, platform) {
   };
 }
 
-async function fetchPageWithRedirects(initialUrl, platform, fetcher) {
+async function fetchPageWithRedirects(initialUrl, platform, fetcher, headers = PAGE_HEADERS) {
   let current = initialUrl;
   for (let redirect = 0; redirect <= 5; redirect += 1) {
     if (!hostMatches(current.hostname, PLATFORM_HOSTS[platform])) throw new Error('分享链接跳转到了不受支持的网站');
-    const response = await fetcher(current.href, { headers: PAGE_HEADERS, redirect: 'manual' });
+    const response = await fetcher(current.href, { headers, redirect: 'manual' });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
       if (!location) throw new Error('分享链接跳转地址无效');
@@ -212,14 +309,31 @@ async function fetchPageWithRedirects(initialUrl, platform, fetcher) {
   throw new Error('分享链接跳转次数过多');
 }
 
+function douyinNoteId(url) {
+  const match = url.pathname.match(/\/(?:share\/)?note\/(\d+)/i);
+  return match?.[1] || '';
+}
+
 export async function resolveSharedPost(input, fetcher = fetch) {
   if (String(input || '').length > 4000) throw new Error('分享文案过长，请只保留作品链接');
   const shared = extractSharedUrl(input);
   const { html, finalUrl } = await fetchPageWithRedirects(shared.url, shared.platform, fetcher);
-  return {
-    ...parsePostHtml(html, finalUrl, shared.platform),
-    sourceUrl: finalUrl.href,
-  };
+  try {
+    return {
+      ...parsePostHtml(html, finalUrl, shared.platform),
+      sourceUrl: finalUrl.href,
+    };
+  } catch (error) {
+    const noteId = shared.platform === 'douyin' ? douyinNoteId(finalUrl) : '';
+    if (error.code !== 'NO_IMAGES' || !noteId) throw error;
+    const seoUrl = new URL(`https://www.iesdouyin.com/share/note/${noteId}/`);
+    seoUrl.searchParams.set('from_ssr', '1');
+    const seoPage = await fetchPageWithRedirects(seoUrl, 'douyin', fetcher, DOUYIN_SEO_HEADERS);
+    return {
+      ...parsePostHtml(seoPage.html, seoPage.finalUrl, 'douyin'),
+      sourceUrl: seoPage.finalUrl.href,
+    };
+  }
 }
 
 export async function fetchProxiedImage(source, platform, fetcher = fetch) {

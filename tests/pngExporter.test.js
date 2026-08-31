@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   allHighlightedExportFileName,
   highlightedExportFileName,
+  highlightedExportZipEntryName,
   preferredCell,
   selectExportCell,
 } from '../src/export/pngExporter.js';
@@ -49,5 +50,24 @@ test('分色定位图文件名包含色号和图纸尺寸', () => {
   assert.equal(
     highlightedExportFileName('C20', { width: 70, height: 104 }),
     '拼豆分色定位图-C20-70x104.png',
+  );
+});
+
+test('镜像分色定位图使用可区分的文件名', () => {
+  assert.equal(
+    highlightedExportFileName('C20', { width: 70, height: 104 }, { mirrorX: true }),
+    '拼豆镜像分色定位图-C20-70x104.png',
+  );
+});
+
+test('批量 ZIP 将非镜像和镜像定位图分别放入独立文件夹', () => {
+  const pattern = { width: 70, height: 104 };
+  assert.equal(
+    highlightedExportZipEntryName('C20', pattern),
+    '非镜像/拼豆分色定位图-C20-70x104.png',
+  );
+  assert.equal(
+    highlightedExportZipEntryName('C20', pattern, { mirrorX: true }),
+    '镜像/拼豆镜像分色定位图-C20-70x104.png',
   );
 });

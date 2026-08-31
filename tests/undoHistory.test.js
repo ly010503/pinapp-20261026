@@ -31,7 +31,7 @@ test('撤销历史会限制数量并忽略尺寸不匹配的旧图纸', () => {
   assert.equal(restorePatternSnapshot(history, differentPattern), false);
 });
 
-test('完整快照可以撤销图纸裁切并恢复尺寸和采样数据', () => {
+test('完整快照可以撤销图纸尺寸调整并恢复尺寸和采样数据', () => {
   const pattern = {
     width: 3,
     height: 2,

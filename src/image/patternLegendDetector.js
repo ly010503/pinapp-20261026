@@ -121,6 +121,28 @@ function alignedGroup(components, orientation) {
   ));
 }
 
+function parallelAlignedGroups(components, orientation) {
+  const crossCenter = (component) => (
+    orientation === 'horizontal' ? component.centerY : component.centerX
+  );
+  const crossSize = (component) => (
+    orientation === 'horizontal' ? component.height : component.width
+  );
+  const sorted = [...components].sort((first, second) => crossCenter(first) - crossCenter(second));
+  const clusters = [];
+  for (const component of sorted) {
+    const cluster = clusters[clusters.length - 1];
+    const center = cluster ? median(cluster.map(crossCenter)) : 0;
+    const size = cluster ? median(cluster.map(crossSize)) : crossSize(component);
+    if (cluster && Math.abs(crossCenter(component) - center) <= Math.max(4, size * 0.58)) {
+      cluster.push(component);
+    } else {
+      clusters.push([component]);
+    }
+  }
+  return clusters.map((cluster) => alignedGroup(cluster, orientation));
+}
+
 function groupRegularity(group, orientation) {
   if (group.length < 4) return 0;
   const gaps = [];
@@ -280,11 +302,28 @@ export function detectPatternLegend(imageData, detection, palette, options = {})
   for (const region of candidateRegions(imageData, detection)) {
     const background = regionBackground(imageData, region);
     const components = connectedComponents(imageData, region, background, minimumUnit);
-    const rawGroup = alignedGroup(components, region.orientation);
-    if (rawGroup.length < minimumSwatches) continue;
-    const regularity = groupRegularity(rawGroup, region.orientation);
-    if (regularity < 0.68) continue;
-    const group = completeGroup(imageData, region, rawGroup, background);
+    const swatchComponents = components.filter((component) => (
+      component.width >= minimumUnit * 1.6
+      && component.height >= minimumUnit * 1.6
+    ));
+    const regularGroups = parallelAlignedGroups(swatchComponents, region.orientation)
+      .map((rawGroup) => ({ rawGroup, regularity: groupRegularity(rawGroup, region.orientation) }))
+      .filter(({ rawGroup, regularity }) => rawGroup.length >= minimumSwatches && regularity >= 0.68)
+      .map(({ rawGroup, regularity }) => ({
+        group: completeGroup(imageData, region, rawGroup, background),
+        regularity,
+      }));
+    if (!regularGroups.length) continue;
+    const referencePitch = groupPitch(regularGroups[0].group, region.orientation);
+    const compatibleGroups = regularGroups.filter(({ group }) => {
+      const pitch = groupPitch(group, region.orientation);
+      return Number.isFinite(referencePitch)
+        && Number.isFinite(pitch)
+        && Math.abs(pitch - referencePitch) <= Math.max(3, referencePitch * 0.22);
+    });
+    const group = compatibleGroups.flatMap((item) => item.group);
+    const regularity = compatibleGroups.reduce((sum, item) => sum + item.regularity, 0)
+      / Math.max(1, compatibleGroups.length);
     const matches = group.map((component) => {
       const rgb = sampleComponentColor(imageData, component);
       const color = findNearestPaletteColor(rgb, palette);
@@ -294,6 +333,9 @@ export function detectPatternLegend(imageData, detection, palette, options = {})
     if (uniqueIndices.length < Math.min(3, minimumSwatches)) continue;
     const coverage = Math.min(1, group.length / 12);
     const uniqueness = uniqueIndices.length / group.length;
+    // 正常图例中每个色块代表一个不同色号。大量色块被压成少数几个近似色时，
+    // 通常是把图例文字、数量或页面装饰误识别成了色块，不能据此强制限色。
+    if (uniqueness < (options.minimumUniqueness || 0.5)) continue;
     const confidence = Math.min(0.99, 0.42 + regularity * 0.28 + coverage * 0.2 + uniqueness * 0.1);
     const result = {
       detected: confidence >= (options.minimumConfidence || 0.72),

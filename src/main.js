@@ -16,19 +16,21 @@ import {
   getColorDisplayLabel,
 } from './color/manualBlankColor.js';
 import { sortPaletteByRecent, updateRecentColorCodes } from './color/recentPalette.js';
-import { createAdjustedCanvas, getGridPixels } from './image/imageProcessor.js';
-import { analyzePatternGrid, samplePatternGrid } from './image/patternGridDetector.js';
+import { createAdjustedCanvas, getGridPixels, getOrderedGridData } from './image/imageProcessor.js';
+import { analyzePatternGrid, detectPatternOccupiedCells, samplePatternGrid } from './image/patternGridDetector.js';
 import { detectPatternLegend } from './image/patternLegendDetector.js';
 import { downloadLinkedImage, resolveSharedLink } from './link/linkImporter.js';
 import {
   getColorStyleAdjustments,
   shouldOmitWhiteBackground,
   shouldProtectDarkOutline,
+  shouldUseOrderedColorCleanup,
 } from './image/colorStyle.js';
 import { CropperController } from './image/cropperController.js';
 import { generatePattern } from './pattern/patternGenerator.js';
 import { calculateStatistics, countPatternBeans, statisticsTotal } from './pattern/statistics.js';
 import { createWhiteBackgroundMask } from './pattern/backgroundMask.js';
+import { createBackgroundMaskFromSubject, createSubjectMaskFromSampledPixels } from './pattern/subjectMask.js';
 import {
   replacePatternCell,
   replacePatternCells,
@@ -38,7 +40,7 @@ import {
   getPatternTapIntent,
   getRectangularSelectionPositions,
 } from './pattern/cellSelection.js';
-import { cropPattern, getPatternCropInsets } from './pattern/patternCrop.js';
+import { getPatternResizeAdjustments, resizePattern } from './pattern/patternCrop.js';
 import {
   createPatternSnapshot,
   createPatternStateSnapshot,
@@ -703,7 +705,7 @@ function renderColorList() {
   $('#exportAllHighlightedColors').disabled = !state.statistics.length || exportingAllColors;
   $('#exportAllHighlightedColors').textContent = exportingAllColors
     ? '正在生成全部分色定位图…'
-    : `一键导出全部分色定位图（${state.statistics.length}色）`;
+    : `一键导出全部分色定位图（含镜像·${state.statistics.length}色×2）`;
 }
 
 function renderStatistics() {
@@ -790,7 +792,17 @@ function handlePatternCellTap(cell, { shiftKey = false, ctrlKey = false, metaKey
   openReplaceCellDialog(cell);
 }
 
-async function generatePreparedPattern({ pixels, width, height, recovery = false, allowedPaletteIndices = null }) {
+async function generatePreparedPattern({
+  pixels,
+  width,
+  height,
+  recovery = false,
+  allowedPaletteIndices = null,
+  subjectMask = null,
+  darkCoverage = null,
+  structureEdges = null,
+  detailMask = null,
+}) {
   if (state.generating) return;
   state.generating = true;
   const version = ++generationVersion;
@@ -809,12 +821,30 @@ async function generatePreparedPattern({ pixels, width, height, recovery = false
       reduceIsolated: recovery ? false : state.options.reduceIsolated,
       mergeColors: !allowedPaletteIndices?.length,
       protectDarkOutline: recovery ? false : shouldProtectDarkOutline(state.colorStyle),
+      orderedColorCleanup: recovery ? false : shouldUseOrderedColorCleanup(state.colorStyle),
+      subjectMask,
+      darkCoverage: recovery ? null : darkCoverage,
+      structureEdges: recovery ? null : structureEdges,
+      detailMask: recovery ? null : detailMask,
       allowedPaletteIndices,
       onProgress: updateProgress,
     });
     if (version !== generationVersion) return;
     pattern.sourcePixels = pixels;
-    pattern.backgroundMask = getPatternBackgroundMask(pattern, pixels);
+    if (recovery && subjectMask) {
+      pattern.backgroundMask = createBackgroundMaskFromSubject(subjectMask);
+    } else if (subjectMask && shouldUseOrderedColorCleanup(state.colorStyle)) {
+      const blank = state.palette.find((color) => color.manualOnly);
+      if (!blank) throw new Error('纯白留白加载失败，请刷新页面');
+      pattern.backgroundMask = createBackgroundMaskFromSubject(subjectMask);
+      for (let position = 0; position < pattern.indices.length; position += 1) {
+        if (pattern.backgroundMask[position]) pattern.indices[position] = blank.index;
+      }
+    } else {
+      pattern.backgroundMask = recovery
+        ? createWhiteBackgroundMask(pattern, state.palette, pixels)
+        : getPatternBackgroundMask(pattern, pixels);
+    }
     const statistics = calculateStatistics(pattern.indices, state.palette, pattern.backgroundMask);
     if (statisticsTotal(statistics) !== countPatternBeans(pattern.indices, state.palette, pattern.backgroundMask)) {
       throw new Error('颜色统计校验失败，请重新生成');
@@ -851,8 +881,29 @@ async function generate() {
   try {
     const adjusted = createAdjustedCanvas(state.image, state.transform, getColorStyleAdjustments(state.adjustments, state.colorStyle), 1800, state.crop);
     const { width, height } = state.currentSize;
-    const pixels = getGridPixels(adjusted, width, height);
-    await generatePreparedPattern({ pixels, width, height });
+    let pixels;
+    let subjectMask = null;
+    let darkCoverage = null;
+    let structureEdges = null;
+    let detailMask = null;
+    if (shouldUseOrderedColorCleanup(state.colorStyle)) {
+      const orderedGrid = getOrderedGridData(adjusted, width, height);
+      pixels = orderedGrid.pixels;
+      darkCoverage = orderedGrid.darkCoverage;
+      structureEdges = orderedGrid.structureEdges;
+      detailMask = orderedGrid.detailMask;
+      const sampled = orderedGrid.samples;
+      subjectMask = createSubjectMaskFromSampledPixels({
+        pixels: sampled.data,
+        sampleWidth: sampled.width,
+        sampleHeight: sampled.height,
+        gridWidth: width,
+        gridHeight: height,
+      });
+    } else {
+      pixels = getGridPixels(adjusted, width, height);
+    }
+    await generatePreparedPattern({ pixels, width, height, subjectMask, darkCoverage, structureEdges, detailMask });
   } catch (error) {
     notify(error.message || '图片采样失败，请重新上传后再试', 'error', 5000);
   }
@@ -867,8 +918,11 @@ async function confirmPatternGridRecovery() {
   }
   const { imageData, detection, legend } = pendingGridRecovery;
   let pixels;
+  let occupiedMask;
   try {
-    pixels = samplePatternGrid(imageData, detection, width, height, { avoidCenterText: Boolean(legend) });
+    // 现成图纸的每格中央通常印有色号；是否成功识别图例不应影响避字取色。
+    pixels = samplePatternGrid(imageData, detection, width, height, { avoidCenterText: true });
+    occupiedMask = detectPatternOccupiedCells(imageData, detection, width, height, { pixels });
   } catch (error) {
     return notify(error.message || '逐格取色失败，请重新识别', 'error');
   }
@@ -884,6 +938,7 @@ async function confirmPatternGridRecovery() {
     height,
     recovery: true,
     allowedPaletteIndices: legend?.paletteIndices || null,
+    subjectMask: occupiedMask,
   });
 }
 
@@ -1054,11 +1109,13 @@ function openReplaceSelectedCellsDialog() {
   $('#replaceColorDialog').showModal();
 }
 
-function recalculatePatternStatistics() {
-  state.currentPattern.backgroundMask = getPatternBackgroundMask(
-    state.currentPattern,
-    state.currentPattern.sourcePixels,
-  );
+function recalculatePatternStatistics({ preserveBackgroundMask = false } = {}) {
+  if (!preserveBackgroundMask) {
+    state.currentPattern.backgroundMask = getPatternBackgroundMask(
+      state.currentPattern,
+      state.currentPattern.sourcePixels,
+    );
+  }
   state.statistics = calculateStatistics(
     state.currentPattern.indices,
     state.palette,
@@ -1076,7 +1133,7 @@ function updatePatternCropSummary() {
   const summary = $('#patternCropSummary');
   const confirm = $('#confirmPatternCrop');
   if (!pattern) {
-    summary.textContent = '当前还没有可以裁切的图纸。';
+    summary.textContent = '当前还没有可以调整尺寸的图纸。';
     summary.classList.add('error');
     confirm.disabled = true;
     return;
@@ -1088,23 +1145,30 @@ function updatePatternCropSummary() {
     && Number.isInteger(height)
     && width >= 10
     && height >= 10
-    && width <= pattern.width
-    && height <= pattern.height;
+    && width <= 200
+    && height <= 300;
   if (!valid) {
-    summary.textContent = `目标宽度需为10～${pattern.width}格，目标高度需为10～${pattern.height}格。`;
+    summary.textContent = '目标宽度需为10～200格，目标高度需为10～300格。';
     summary.classList.add('error');
     confirm.disabled = true;
     return;
   }
   if (width === pattern.width && height === pattern.height) {
-    summary.textContent = '请把宽度或高度至少减小1格。';
+    summary.textContent = '请输入不同于当前图纸的目标尺寸。';
     summary.classList.add('error');
     confirm.disabled = true;
     return;
   }
 
-  const insets = getPatternCropInsets(pattern.width, pattern.height, width, height);
-  summary.textContent = `将裁成 ${width} × ${height}格：左${insets.left}、右${insets.right}、上${insets.top}、下${insets.bottom}格。`;
+  const adjustments = getPatternResizeAdjustments(pattern.width, pattern.height, width, height);
+  const details = [];
+  if (adjustments.cropLeft || adjustments.cropRight || adjustments.cropTop || adjustments.cropBottom) {
+    details.push(`裁切左${adjustments.cropLeft}、右${adjustments.cropRight}、上${adjustments.cropTop}、下${adjustments.cropBottom}格`);
+  }
+  if (adjustments.expandLeft || adjustments.expandRight || adjustments.expandTop || adjustments.expandBottom) {
+    details.push(`补空白左${adjustments.expandLeft}、右${adjustments.expandRight}、上${adjustments.expandTop}、下${adjustments.expandBottom}格`);
+  }
+  summary.textContent = `将调整为 ${width} × ${height}格：${details.join('；')}。`;
   summary.classList.remove('error');
   confirm.disabled = false;
 }
@@ -1115,8 +1179,8 @@ function openPatternCropDialog() {
   $('#patternCropCurrent').textContent = `${pattern.width} × ${pattern.height}格`;
   const width = $('#patternCropWidth');
   const height = $('#patternCropHeight');
-  width.max = String(pattern.width);
-  height.max = String(pattern.height);
+  width.max = '200';
+  height.max = '300';
   width.value = String(pattern.width);
   height.value = String(pattern.height);
   updatePatternCropSummary();
@@ -1128,22 +1192,24 @@ function applyPatternCrop() {
   if (!currentPattern) return notify('当前图纸已经失效，请重新生成', 'error');
   const width = Number($('#patternCropWidth').value);
   const height = Number($('#patternCropHeight').value);
+  const blank = state.palette.find((color) => color.manualOnly);
+  if (!blank) return notify('纯白留白加载失败，请刷新页面', 'error');
   const snapshot = createPatternStateSnapshot(currentPattern);
   let result;
   try {
-    result = cropPattern(currentPattern, width, height);
+    result = resizePattern(currentPattern, width, height, blank.index);
   } catch (error) {
     updatePatternCropSummary();
-    return notify(error.message || '图纸裁切失败', 'error');
+    return notify(error.message || '图纸尺寸调整失败', 'error');
   }
 
   state.currentPattern = result.pattern;
   state.currentSize = { width, height };
-  if (!recalculatePatternStatistics()) {
+  if (!recalculatePatternStatistics({ preserveBackgroundMask: true })) {
     state.currentPattern = currentPattern;
     state.currentSize = { width: currentPattern.width, height: currentPattern.height };
-    recalculatePatternStatistics();
-    return notify('裁切后的颜色统计校验失败，图纸没有被修改', 'error');
+    recalculatePatternStatistics({ preserveBackgroundMask: true });
+    return notify('调整后的颜色统计校验失败，图纸没有被修改', 'error');
   }
 
   pushPatternSnapshot(state.patternUndoHistory, snapshot, PATTERN_UNDO_LIMIT);
@@ -1156,8 +1222,11 @@ function applyPatternCrop() {
   renderer.rebuild();
   renderer.fit();
   $('#patternCropDialog').close();
-  const { left, right, top, bottom } = result.insets;
-  notify(`图纸已裁成 ${width} × ${height}格（左${left}、右${right}、上${top}、下${bottom}）`, 'success', 5000);
+  const { adjustments } = result;
+  const changed = [];
+  if (adjustments.cropLeft || adjustments.cropRight || adjustments.cropTop || adjustments.cropBottom) changed.push('已居中裁切');
+  if (adjustments.expandLeft || adjustments.expandRight || adjustments.expandTop || adjustments.expandBottom) changed.push('已居中补空白');
+  notify(`图纸已调整为 ${width} × ${height}格（${changed.join('，')}）`, 'success', 5000);
 }
 
 function undoLastPatternEdit() {
@@ -1167,7 +1236,7 @@ function undoLastPatternEdit() {
     notify('还没有可撤销的图纸修改');
     return;
   }
-  if (!recalculatePatternStatistics()) {
+  if (!recalculatePatternStatistics({ preserveBackgroundMask: true })) {
     notify('撤销后的颜色统计校验失败，请重新生成图纸', 'error');
     return;
   }
@@ -1407,12 +1476,12 @@ function bindResults() {
         state.statistics,
         {
           tiledWatermarkText: getExportWatermarkText(),
-          onProgress: ({ completed, total, target }) => {
-            button.textContent = `正在生成 ${completed}/${total}：${target.code}`;
+          onProgress: ({ completed, total, target, variant }) => {
+            button.textContent = `正在生成 ${completed}/${total}：${target.code}·${variant.label}`;
           },
         },
       );
-      notify(`已导出全部 ${result.count} 种颜色的分色定位图（ZIP）`, 'success', 6000);
+      notify(`已导出 ${result.count} 种颜色的正向+镜像分色定位图，共 ${result.fileCount} 张（ZIP）`, 'success', 6000);
     } catch (error) {
       notify(error.message || '全部分色定位图导出失败，请重试', 'error', 6000);
     } finally {

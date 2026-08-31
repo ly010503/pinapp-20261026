@@ -112,3 +112,10 @@ test('工程文件会保留原色识别模式', () => {
   const restored = parseProjectDocument(serializeProjectDocument(document), { paletteCodes });
   assert.equal(restored.settings.colorStyle, 'direct');
 });
+
+test('工程文件会保留有序颜色模式', () => {
+  const document = createExampleDocument();
+  document.settings.colorStyle = 'ordered';
+  const restored = parseProjectDocument(serializeProjectDocument(document), { paletteCodes });
+  assert.equal(restored.settings.colorStyle, 'ordered');
+});

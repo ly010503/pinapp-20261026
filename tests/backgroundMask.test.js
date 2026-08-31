@@ -69,3 +69,23 @@ test('最终都映射为白色时按原图采样区分背景与主体浅色', ()
   assert.equal(mask[4 * width + 3], 0, '映射为白色的主体浅色应显示编号');
   assert.equal(mask[3 * width + 3], 0, '主体内部纯白高光也应显示编号');
 });
+
+test('现成图纸的空白底色即使映射为近白色号也会排除统计', () => {
+  const recoveryPalette = [
+    { code: 'H17', rgb: [241, 237, 237] },
+    { code: 'H7', rgb: [0, 0, 0] },
+  ];
+  const width = 8, height = 8;
+  const indices = new Uint8Array(width * height);
+  const sourcePixels = new Uint8ClampedArray(width * height * 4);
+  for (let position = 0; position < width * height; position += 1) {
+    sourcePixels.set([247, 247, 247, 255], position * 4);
+  }
+  for (let y = 2; y <= 5; y += 1) for (let x = 2; x <= 5; x += 1) {
+    indices[y * width + x] = 1;
+    sourcePixels.set([5, 5, 5, 255], (y * width + x) * 4);
+  }
+  const mask = createWhiteBackgroundMask({ width, height, indices }, recoveryPalette, sourcePixels);
+  assert.equal(mask.reduce((sum, value) => sum + value, 0), 48);
+  assert.equal(mask[3 * width + 3], 0);
+});

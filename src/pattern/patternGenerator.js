@@ -27,11 +27,28 @@ function getWorker() {
   return worker;
 }
 
-export function generatePattern({ pixels, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline = true, allowedPaletteIndices = null, onProgress }) {
+export function generatePattern({ pixels, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline = true, orderedColorCleanup = false, subjectMask = null, darkCoverage = null, structureEdges = null, detailMask = null, allowedPaletteIndices = null, onProgress }) {
   const id = ++sequence;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject, onProgress });
     const transferable = pixels.buffer.slice(pixels.byteOffset, pixels.byteOffset + pixels.byteLength);
-    getWorker().postMessage({ type: 'generate', id, pixels: transferable, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline, allowedPaletteIndices }, [transferable]);
+    const subjectTransferable = subjectMask
+      ? subjectMask.buffer.slice(subjectMask.byteOffset, subjectMask.byteOffset + subjectMask.byteLength)
+      : null;
+    const darkCoverageTransferable = darkCoverage
+      ? darkCoverage.buffer.slice(darkCoverage.byteOffset, darkCoverage.byteOffset + darkCoverage.byteLength)
+      : null;
+    const structureEdgesTransferable = structureEdges
+      ? structureEdges.buffer.slice(structureEdges.byteOffset, structureEdges.byteOffset + structureEdges.byteLength)
+      : null;
+    const detailMaskTransferable = detailMask
+      ? detailMask.buffer.slice(detailMask.byteOffset, detailMask.byteOffset + detailMask.byteLength)
+      : null;
+    const transfers = [transferable];
+    if (subjectTransferable) transfers.push(subjectTransferable);
+    if (darkCoverageTransferable) transfers.push(darkCoverageTransferable);
+    if (structureEdgesTransferable) transfers.push(structureEdgesTransferable);
+    if (detailMaskTransferable) transfers.push(detailMaskTransferable);
+    getWorker().postMessage({ type: 'generate', id, pixels: transferable, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline, orderedColorCleanup, subjectMask: subjectTransferable, darkCoverage: darkCoverageTransferable, structureEdges: structureEdgesTransferable, detailMask: detailMaskTransferable, allowedPaletteIndices }, transfers);
   });
 }

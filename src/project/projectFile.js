@@ -130,7 +130,7 @@ function normalizeSettings(settings) {
     crop: normalizeCrop(settings.crop),
     transform: normalizeTransform(settings.transform),
     adjustments: normalizeAdjustments(settings.adjustments),
-    colorStyle: ['natural', 'vivid', 'direct'].includes(settings.colorStyle)
+    colorStyle: ['natural', 'vivid', 'ordered', 'direct'].includes(settings.colorStyle)
       ? settings.colorStyle
       : 'vivid',
     maxColors: requireInteger(settings.maxColors, 1, 221, '颜色上限'),

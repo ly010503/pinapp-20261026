@@ -4,6 +4,7 @@ import { extractSupportedShareUrl, resolveSharedLink } from '../src/link/linkImp
 
 test('前端能从分享文案提取支持的平台链接', () => {
   assert.equal(extractSupportedShareUrl('看看这个 2.88 https://v.douyin.com/AbCd/ 复制打开'), 'https://v.douyin.com/AbCd/');
+  assert.equal(extractSupportedShareUrl('拼豆图纸 https://xhslink.cn/o/52QxeAxkJJ6 先复制再打开【小红书】'), 'https://xhslink.cn/o/52QxeAxkJJ6');
   assert.equal(extractSupportedShareUrl('https://example.com/a'), '');
 });
 

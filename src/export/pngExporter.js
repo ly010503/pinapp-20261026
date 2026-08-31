@@ -6,6 +6,11 @@ import {
 } from '../canvas/patternPainter.js';
 import { Zip, ZipPassThrough } from 'fflate';
 
+const HIGHLIGHTED_EXPORT_VARIANTS = [
+  { mirrorX: false, label: '正向' },
+  { mirrorX: true, label: '镜像' },
+];
+
 function download(blob, name) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -123,9 +128,15 @@ export async function exportPatternPng(pattern, palette, statistics, {
   return result;
 }
 
-export function highlightedExportFileName(code, pattern) {
+export function highlightedExportFileName(code, pattern, { mirrorX = false } = {}) {
   const safeCode = String(code || '颜色').replace(/[^A-Za-z0-9_-]/g, '-');
-  return `拼豆分色定位图-${safeCode}-${pattern.width}x${pattern.height}.png`;
+  const kind = mirrorX ? '拼豆镜像分色定位图' : '拼豆分色定位图';
+  return `${kind}-${safeCode}-${pattern.width}x${pattern.height}.png`;
+}
+
+export function highlightedExportZipEntryName(code, pattern, options = {}) {
+  const folder = options.mirrorX ? '镜像' : '非镜像';
+  return `${folder}/${highlightedExportFileName(code, pattern, options)}`;
 }
 
 export function allHighlightedExportFileName(pattern) {
@@ -133,6 +144,7 @@ export function allHighlightedExportFileName(pattern) {
 }
 
 async function renderHighlightedColor(pattern, palette, statistics, highlightedCode, {
+  mirrorX = false,
   tiledWatermarkText = '',
 } = {}) {
   const target = statistics.find((item) => item.code === highlightedCode);
@@ -143,6 +155,7 @@ async function renderHighlightedColor(pattern, palette, statistics, highlightedC
     (ctx, cell) => drawPatternSheet(ctx, pattern, palette, targetStatistics, {
       cell,
       highlightedCode,
+      mirrorX,
       tiledWatermarkText,
     }),
     selection,
@@ -181,19 +194,24 @@ export async function exportAllHighlightedColorsZip(pattern, palette, statistics
   });
 
   try {
+    const total = statistics.length * HIGHLIGHTED_EXPORT_VARIANTS.length;
+    let completedCount = 0;
     for (let index = 0; index < statistics.length; index += 1) {
       const target = statistics[index];
-      const result = await renderHighlightedColor(
-        pattern,
-        palette,
-        statistics,
-        target.code,
-        { tiledWatermarkText },
-      );
-      const entry = new ZipPassThrough(highlightedExportFileName(target.code, pattern));
-      zip.add(entry);
-      entry.push(new Uint8Array(await result.blob.arrayBuffer()), true);
-      onProgress?.({ completed: index + 1, total: statistics.length, target });
+      for (const variant of HIGHLIGHTED_EXPORT_VARIANTS) {
+        const result = await renderHighlightedColor(
+          pattern,
+          palette,
+          statistics,
+          target.code,
+          { mirrorX: variant.mirrorX, tiledWatermarkText },
+        );
+        const entry = new ZipPassThrough(highlightedExportZipEntryName(target.code, pattern, variant));
+        zip.add(entry);
+        entry.push(new Uint8Array(await result.blob.arrayBuffer()), true);
+        completedCount += 1;
+        onProgress?.({ completed: completedCount, total, target, variant });
+      }
     }
     zip.end();
     await completed;
@@ -204,5 +222,9 @@ export async function exportAllHighlightedColorsZip(pattern, palette, statistics
 
   const blob = new Blob(chunks, { type: 'application/zip' });
   download(blob, allHighlightedExportFileName(pattern));
-  return { blobSize: blob.size, count: statistics.length };
+  return {
+    blobSize: blob.size,
+    count: statistics.length,
+    fileCount: statistics.length * HIGHLIGHTED_EXPORT_VARIANTS.length,
+  };
 }

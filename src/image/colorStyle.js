@@ -1,6 +1,7 @@
 export const COLOR_STYLES = {
   natural: { brightness: 0, contrast: 0, saturation: 0 },
   vivid: { brightness: 1, contrast: 10, saturation: 65 },
+  ordered: { brightness: 0, contrast: 0, saturation: 0 },
   direct: { brightness: 0, contrast: 0, saturation: 0 },
 };
 
@@ -17,4 +18,8 @@ export function shouldProtectDarkOutline(style = 'vivid') {
 
 export function shouldOmitWhiteBackground(style = 'vivid') {
   return style !== 'direct';
+}
+
+export function shouldUseOrderedColorCleanup(style = 'vivid') {
+  return style === 'ordered';
 }

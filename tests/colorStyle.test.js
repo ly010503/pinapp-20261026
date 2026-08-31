@@ -5,6 +5,7 @@ import {
   getColorStyleAdjustments,
   shouldOmitWhiteBackground,
   shouldProtectDarkOutline,
+  shouldUseOrderedColorCleanup,
 } from '../src/image/colorStyle.js';
 
 test('鲜艳模式提高饱和度和少量对比度', () => {
@@ -30,9 +31,14 @@ test('原色识别不改变识别颜色，也不会强制强化黑色轮廓', ()
   assert.equal(shouldProtectDarkOutline('vivid'), true);
   assert.equal(shouldOmitWhiteBackground('natural'), true);
   assert.equal(shouldOmitWhiteBackground('vivid'), true);
+  assert.equal(shouldUseOrderedColorCleanup('natural'), false);
+  assert.equal(shouldUseOrderedColorCleanup('vivid'), false);
+  assert.equal(shouldUseOrderedColorCleanup('direct'), false);
+  assert.equal(shouldUseOrderedColorCleanup('ordered'), true);
 });
 
 test('自然和鲜艳模式的原有参数保持不变', () => {
   assert.deepEqual(COLOR_STYLES.natural, { brightness: 0, contrast: 0, saturation: 0 });
   assert.deepEqual(COLOR_STYLES.vivid, { brightness: 1, contrast: 10, saturation: 65 });
+  assert.deepEqual(COLOR_STYLES.ordered, { brightness: 0, contrast: 0, saturation: 0 });
 });

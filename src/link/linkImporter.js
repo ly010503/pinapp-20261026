@@ -4,7 +4,7 @@ export function extractSupportedShareUrl(input) {
     try {
       const url = new URL(value.replace(/[，。！？、；：)）\]}]+$/g, ''));
       const host = url.hostname.toLowerCase();
-      if (['xiaohongshu.com', 'xhslink.com', 'douyin.com', 'iesdouyin.com'].some((suffix) => host === suffix || host.endsWith(`.${suffix}`))) {
+      if (['xiaohongshu.com', 'xhslink.com', 'xhslink.cn', 'douyin.com', 'iesdouyin.com'].some((suffix) => host === suffix || host.endsWith(`.${suffix}`))) {
         return url.href;
       }
     } catch {

@@ -101,6 +101,10 @@
                   <span class="style-dots vivid-dots" aria-hidden="true"><i></i><i></i><i></i></span>
                   <strong>鲜艳</strong><em>推荐</em><small>颜色更浓郁、更有冲击力</small>
                 </button>
+                <button class="style-card" data-color-style="ordered" role="radio" aria-checked="false">
+                  <span class="style-dots ordered-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <strong>有序</strong><small>连续色块、H7外轮廓，轮廓外自动留白，更方便拼制</small>
+                </button>
                 <button class="style-card direct-style-card" data-color-style="direct" role="radio" aria-checked="false">
                   <span class="style-dots direct-dots" aria-hidden="true"><i></i><i></i><i></i></span>
                   <strong>原色识别</strong><small>识别到什么颜色就用什么颜色，不强化黑色轮廓，H2白色也完整保留</small>
@@ -155,8 +159,8 @@
           <p class="gesture-hint">轻点单格换色 · Ctrl+点击逐格多选 · Shift+点击两点框选 · 多选后轻点已选色块批量换色 · Ctrl+Z撤销</p>
         </div>
         <div class="pattern-crop-bar">
-          <div><strong>图纸两侧有空白？</strong><span>修改完成后直接裁掉网格行列，不会重新识别颜色</span></div>
-          <button id="openPatternCrop" type="button">✂ 裁切图纸</button>
+          <div><strong>需要调整图纸边缘？</strong><span>可以居中裁切或补空白格，不会重新识别已有颜色</span></div>
+          <button id="openPatternCrop" type="button">↔ 调整图纸尺寸</button>
         </div>
 
         <article class="card stats-card">
@@ -171,7 +175,7 @@
           <div class="list-actions">
             <button id="replaceSelectedColor" class="replace-selected-button" disabled>替换选中颜色</button>
             <button id="exportHighlightedColor" class="highlight-export-button" disabled>先选择颜色，再导出定位图</button>
-            <button id="exportAllHighlightedColors" class="all-colors-export-button" disabled>一键导出全部分色定位图</button>
+            <button id="exportAllHighlightedColors" class="all-colors-export-button" disabled>一键导出全部分色定位图（含镜像）</button>
             <button id="toggleColors" class="soft-button" hidden>展开全部</button>
             <button id="copyColors" class="soft-button">复制用豆清单</button>
           </div>
@@ -211,10 +215,10 @@
     </dialog>
 
     <dialog id="patternCropDialog" class="simple-dialog pattern-crop-dialog">
-      <button id="cancelPatternCrop" class="icon-close" type="button" aria-label="关闭图纸裁切">×</button>
-      <span class="eyebrow">成品图纸裁边</span>
-      <h2>裁掉图纸四周的空白格</h2>
-      <p class="pattern-crop-intro">只删除现有网格的行列，已经修改好的颜色和色号会原样保留。</p>
+      <button id="cancelPatternCrop" class="icon-close" type="button" aria-label="关闭图纸尺寸调整">×</button>
+      <span class="eyebrow">成品图纸尺寸</span>
+      <h2>裁切或扩展图纸</h2>
+      <p class="pattern-crop-intro">尺寸变小时居中裁切，尺寸变大时在四周补纯白留白；已有颜色和色号会原样保留。</p>
       <div class="pattern-crop-current"><span>当前尺寸</span><strong id="patternCropCurrent">0 × 0格</strong></div>
       <div class="custom-inputs">
         <label>目标宽度<input id="patternCropWidth" type="number" min="10" max="200" inputmode="numeric" /></label>
@@ -222,8 +226,8 @@
         <label>目标高度<input id="patternCropHeight" type="number" min="10" max="300" inputmode="numeric" /></label>
       </div>
       <p id="patternCropSummary" class="pattern-crop-summary" aria-live="polite"></p>
-      <small class="pattern-crop-rule">左右、上下居中裁切；遇到奇数时，左边或上边会多裁一格。可用 Ctrl+Z 撤销。</small>
-      <button id="confirmPatternCrop" class="primary-button" type="button">确认裁切图纸</button>
+      <small class="pattern-crop-rule">图纸始终居中调整；遇到奇数时，左边或上边会多裁或多补一格。可用 Ctrl+Z 撤销。</small>
+      <button id="confirmPatternCrop" class="primary-button" type="button">确认调整图纸</button>
     </dialog>
 
     <dialog id="patternGridDialog" class="simple-dialog pattern-grid-dialog">
