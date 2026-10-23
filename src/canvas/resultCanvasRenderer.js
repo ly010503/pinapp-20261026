@@ -4,11 +4,12 @@ import { hitTestPatternCell } from './hitTest.js';
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export class ResultCanvasRenderer {
-  constructor(canvas, stage, getState, onCellTap = null) {
+  constructor(canvas, stage, getState, onCellTap = null, paint = {}) {
     this.canvas = canvas; this.stage = stage; this.getState = getState;
     this.ctx = canvas.getContext('2d'); this.documentCanvas = document.createElement('canvas');
     this.pointers = new Map(); this.dragOrigin = null; this.pinchOrigin = null;
     this.onCellTap = onCellTap; this.tapCandidate = null; this.lastTap = null; this.tapTimer = null;
+    this.paint = paint; this.paintPointer = null;
     this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(stage);
     this.bind();
   }
@@ -38,6 +39,11 @@ export class ResultCanvasRenderer {
   }
 
   fit() { const viewport = this.getState().viewport; viewport.zoom = 1; viewport.x = 0; viewport.y = 0; this.draw(); }
+
+  clearPendingTap() {
+    clearTimeout(this.tapTimer);
+    this.tapTimer = null; this.lastTap = null; this.tapCandidate = null;
+  }
 
   getFitScale() {
     if (!this.documentCanvas.width) return 1;
@@ -115,6 +121,21 @@ export class ResultCanvasRenderer {
       if (event.target.closest('button')) return;
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       this.stage.setPointerCapture(event.pointerId); this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const state = this.getState();
+      if (this.pointers.size >= 2) {
+        if (this.paintPointer !== null) this.paint.end?.(true);
+        this.paintPointer = null;
+        clearTimeout(this.tapTimer); this.lastTap = null;
+        this.tapCandidate = null;
+        if (this.pointers.size === 2) this.startPinch();
+        return;
+      }
+      if (state.previewMode === 'pattern' && !state.generating && ['brush', 'eraser', 'fill'].includes(state.editTool)) {
+        clearTimeout(this.tapTimer); this.lastTap = null; this.tapCandidate = null;
+        this.paintPointer = event.pointerId;
+        this.paint.start?.(this.hitTestCell(event.clientX, event.clientY));
+        return;
+      }
       const viewport = this.getState().viewport;
       if (this.pointers.size === 1) {
         this.dragOrigin = { x: event.clientX, y: event.clientY, vx: viewport.x, vy: viewport.y };
@@ -133,6 +154,10 @@ export class ResultCanvasRenderer {
     this.stage.addEventListener('pointermove', (event) => {
       if (!this.pointers.has(event.pointerId)) return;
       this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (this.paintPointer === event.pointerId) {
+        this.paint.move?.(this.hitTestCell(event.clientX, event.clientY));
+        return;
+      }
       if (this.tapCandidate?.pointerId === event.pointerId
         && Math.hypot(event.clientX - this.tapCandidate.x, event.clientY - this.tapCandidate.y) > 8) {
         this.tapCandidate.moved = true;
@@ -145,18 +170,24 @@ export class ResultCanvasRenderer {
       }
     });
     const end = (event, cancelled = false) => {
+      if (this.paintPointer === event.pointerId) {
+        this.paint.move?.(this.hitTestCell(event.clientX, event.clientY));
+        this.paint.end?.(cancelled);
+        this.paintPointer = null;
+      }
       const shouldTap = !cancelled
         && this.pointers.size === 1
         && this.tapCandidate?.pointerId === event.pointerId
         && !this.tapCandidate.moved;
       this.pointers.delete(event.pointerId);
-      if (shouldTap) this.queueTap(event.clientX, event.clientY, {
+      if (shouldTap && this.getState().editTool !== 'move' && !this.getState().generating) this.queueTap(event.clientX, event.clientY, {
         shiftKey: this.tapCandidate.shiftKey || event.shiftKey,
         ctrlKey: this.tapCandidate.ctrlKey || event.ctrlKey,
         metaKey: this.tapCandidate.metaKey || event.metaKey,
       });
       if (this.tapCandidate?.pointerId === event.pointerId) this.tapCandidate = null;
       if (this.pointers.size < 2) this.pinchOrigin = null;
+      else if (this.pointers.size === 2) this.startPinch();
       if (this.pointers.size === 1) {
         const point = [...this.pointers.values()][0], v = this.getState().viewport;
         this.dragOrigin = { x: point.x, y: point.y, vx: v.x, vy: v.y };
@@ -164,6 +195,9 @@ export class ResultCanvasRenderer {
     };
     this.stage.addEventListener('pointerup', (event) => end(event));
     this.stage.addEventListener('pointercancel', (event) => end(event, true));
+    this.stage.addEventListener('lostpointercapture', (event) => {
+      if (this.pointers.has(event.pointerId)) end(event, true);
+    });
     this.stage.addEventListener('dblclick', (event) => event.preventDefault());
   }
 

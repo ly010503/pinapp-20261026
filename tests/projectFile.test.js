@@ -60,6 +60,20 @@ test('工程文件能完整恢复图纸和编辑设置，但不包含撤销历�
   assert.equal('patternUndoHistory' in restored, false);
 });
 
+test('个人色板随工程保存，并能兼容未设置个人色板的旧工程', () => {
+  const document = createExampleDocument();
+  document.settings.useOwnedPalette = true;
+  document.settings.ownedColorCodes = ['A1', 'B2'];
+  const restored = parseProjectDocument(serializeProjectDocument(document), { paletteCodes });
+  assert.equal(restored.settings.useOwnedPalette, true);
+  assert.deepEqual(restored.settings.ownedColorCodes, ['A1', 'B2']);
+  document.settings.ownedColorCodes = [];
+  assert.throws(() => parseProjectDocument(serializeProjectDocument(document), { paletteCodes }), /个人色号/);
+  delete document.settings.useOwnedPalette;
+  delete document.settings.ownedColorCodes;
+  assert.equal(parseProjectDocument(serializeProjectDocument(document), { paletteCodes }).settings.useOwnedPalette, false);
+});
+
 test('工程保留原来的留白蒙版，并兼容没有蒙版的旧工程', () => {
   const document = createExampleDocument();
   document.pattern.backgroundMask = btoa(String.fromCharCode(0, 1));

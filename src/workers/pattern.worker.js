@@ -78,6 +78,7 @@ self.onmessage = ({ data }) => {
       structureEdges: structureEdgesBuffer = null,
       detailMask: detailMaskBuffer = null,
       allowedPaletteIndices,
+      limitAllowedColors = false,
       pixels: buffer,
     } = data;
     const pixels = new Uint8ClampedArray(buffer);
@@ -95,11 +96,10 @@ self.onmessage = ({ data }) => {
     const protectedOutlineMask = subjectOutlineMask
       ? combineOuterAndInnerOutlines(outlineMask, subjectOutlineMask, width, height)
       : outlineMask;
-    // H7 轮廓是硬约束；格内色差只说明“这里可能有细节”，不能当成绝对锁定。
+    // 轮廓优先用 H7；受限色板改用已有色号中的最深色。
+    // 格内色差只说明“这里可能有细节”，不能当成绝对锁定。
     // 把二者合并会将抗锯齿、渐变和纹理全部冻结，形成大量无法清理的杂色格。
     const cleanupProtectedMask = protectedOutlineMask;
-    const outlineIndex = protectDarkOutline ? findOutlinePaletteIndex(palette) : -1;
-    const hasProtectedOutline = outlineIndex >= 0 && protectedOutlineMask?.some(Boolean);
     const raw = new Uint8Array(width * height);
     const counts = new Uint32Array(palette.length);
     let activePixelTotal = 0;
@@ -107,8 +107,13 @@ self.onmessage = ({ data }) => {
       ? [...new Set(allowedPaletteIndices)].filter((index) => Number.isInteger(index) && index >= 0 && index < palette.length)
       : null;
     const constrainedCandidates = legendAllowed?.length ? legendAllowed : null;
+    if (legendAllowed && !legendAllowed.length) throw new Error('可用色板为空');
     const allCandidates = palette.map((_, index) => index);
     const baseCandidates = constrainedCandidates || allCandidates;
+    if (Array.isArray(allowedPaletteIndices) && !baseCandidates.length) throw new Error('可用色板为空');
+    const outlineCandidate = protectDarkOutline ? findOutlinePaletteIndex(baseCandidates.map((index) => palette[index])) : -1;
+    const outlineIndex = outlineCandidate < 0 ? -1 : baseCandidates[outlineCandidate];
+    const hasProtectedOutline = outlineIndex >= 0 && protectedOutlineMask?.some(Boolean);
     const fillCandidates = orderedColorCleanup && outlineIndex >= 0
       ? baseCandidates.filter((index) => index !== outlineIndex)
       : baseCandidates;
@@ -138,9 +143,11 @@ self.onmessage = ({ data }) => {
       }
       if (i > 0 && i % 12000 === 0) postProgress(34 + Math.round((i / raw.length) * 30), '正在匹配色卡');
     }
-    let allowed = constrainedCandidates
+    let allowed = constrainedCandidates && !limitAllowedColors
       ? constrainedCandidates.filter((index) => counts[index] > 0)
       : choosePaletteIndices(counts, maxColors, activePixelTotal || raw.length, palette);
+    allowed = allowed.filter((index) => baseCandidates.includes(index));
+    if (!allowed.length) allowed = [baseCandidates[0]];
     if (mergeColors) {
       const merged = [];
       for (const index of allowed) {

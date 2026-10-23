@@ -1,6 +1,7 @@
 import 'cropperjs/dist/cropper.css';
 import './styles/app.css';
 import './styles/workspace.css';
+import './styles/paint-tools.css';
 import paletteJson from './data/palettes/mard-221.json';
 import {
   PATTERN_SIZES,
@@ -33,11 +34,6 @@ import { calculateStatistics, countPatternBeans, statisticsTotal } from './patte
 import { createWhiteBackgroundMask } from './pattern/backgroundMask.js';
 import { createBackgroundMaskFromSubject, createSubjectMaskFromSampledPixels } from './pattern/subjectMask.js';
 import {
-  replacePatternCell,
-  replacePatternCells,
-  replacePatternColor,
-} from './pattern/colorReplacement.js';
-import {
   getPatternTapIntent,
   getRectangularSelectionPositions,
 } from './pattern/cellSelection.js';
@@ -46,6 +42,7 @@ import {
   createPatternStateSnapshot,
   pushPatternSnapshot,
   transferPatternSnapshot,
+  restorePatternSnapshot,
 } from './pattern/undoHistory.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
 import {
@@ -69,6 +66,9 @@ import { notify } from './ui/notifications.js';
 import { drawPatternSheet } from './canvas/patternPainter.js';
 import { createAutoDraft } from './project/autoDraft.js';
 import { readLatestDraft, writeLatestDraft } from './project/draftStore.js';
+import { linePositions, floodRegion, paintPositions } from './pattern/paintTools.js';
+import { resolveAllowedPaletteIndices } from './color/ownedPalette.js';
+import { createOwnedPaletteController } from './ui/ownedPaletteController.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -91,6 +91,8 @@ let pendingGridRecovery = null;
 let currentLinkedPost = null;
 let recentReplacementCodes = loadRecentReplacementCodes();
 let latestDraft = null;
+let activeStroke = null;
+let paintFrame = null;
 const autoDraft = createAutoDraft({
   capture: async () => {
     const image = state.image;
@@ -120,7 +122,112 @@ const renderer = new ResultCanvasRenderer(
   $('#resultStage'),
   () => state,
   (cell, modifiers) => handlePatternCellTap(cell, modifiers),
+  { start: startPainting, move: continuePainting, end: finishPainting },
 );
+const ownedPalette = createOwnedPaletteController({
+  palette: state.palette, state, notify,
+  onChange: () => { syncPaintTools(); markDirty(); },
+});
+
+function availableColors() {
+  const codes = new Set(state.ownedColorCodes);
+  return state.palette.filter((color) => color.manualOnly || !state.useOwnedPalette || codes.has(color.code));
+}
+
+function syncPaintTools() {
+  const colors = availableColors();
+  let color = colors.find((item) => item.code === state.brushColorCode);
+  if (!color) {
+    color = colors.find((item) => !item.manualOnly) || colors[0];
+    state.brushColorCode = color.code;
+  }
+  $('#brushColorSwatch').style.backgroundColor = color.hex;
+  $('#brushColorLabel').textContent = `画笔色 ${getColorDisplayCode(color)}`;
+  $('#resultStage').dataset.tool = state.editTool;
+  $$('[data-edit-tool]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.editTool === state.editTool));
+    button.disabled = state.generating;
+  });
+  $('#chooseBrushColor').disabled = state.generating;
+  const hints = {
+    select: '制作图中点击单格换色；Ctrl 多选、Shift 框选，拖动平移。',
+    move: '拖动平移，滚轮或双指缩放；选择画笔开始精修。',
+    brush: '按住划过连续上色，一笔可整体撤销；双指缩放会取消当前一笔。',
+    eraser: '按住划过清除豆子，留白不计用量；一笔可整体撤销。',
+    fill: '点击填充上下左右相连的同色区域；斜角和不同色号分开处理。',
+  };
+  $('#paintToolHint').textContent = hints[state.editTool];
+}
+
+function setEditTool(tool) {
+  renderer.clearPendingTap();
+  finishPainting();
+  if (state.generating) return;
+  if (!['select', 'move', 'brush', 'eraser', 'fill'].includes(tool)) return;
+  if (tool !== 'move' && state.previewMode !== 'pattern') setMode('pattern');
+  state.editTool = tool;
+  state.highlightedCode = null;
+  clearSelectedCells({ redraw: false });
+  syncPaintTools(); renderColorList(); renderer.rebuild();
+  if (['brush', 'eraser', 'fill'].includes(tool) && state.viewport.zoom < 2) {
+    const rect = $('#resultStage').getBoundingClientRect();
+    renderer.zoomAt(2 / state.viewport.zoom, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+}
+
+function startPainting(cell) {
+  finishPainting();
+  if (!cell || state.generating || !state.currentPattern) return;
+  const blank = state.palette.find((color) => color.manualOnly);
+  const color = state.editTool === 'eraser' ? blank : availableColors().find((item) => item.code === state.brushColorCode);
+  if (!color) return;
+  state.highlightedCode = null; clearSelectedCells({ redraw: false });
+  activeStroke = {
+    snapshot: createPatternStateSnapshot(state.currentPattern),
+    target: color.index, blank: blank.index, previous: null, changed: 0, tool: state.editTool,
+  };
+  continuePainting(cell);
+}
+
+function continuePainting(cell) {
+  if (!activeStroke) return;
+  if (!cell) { activeStroke.previous = null; return; }
+  const stroke = activeStroke;
+  if (stroke.tool === 'fill' && stroke.filled) return;
+  const positions = stroke.tool === 'fill'
+    ? floodRegion(state.currentPattern, cell.position, stroke.blank)
+    : linePositions(state.currentPattern.width, stroke.previous ?? cell.position, cell.position);
+  stroke.previous = cell.position;
+  stroke.filled = stroke.tool === 'fill';
+  stroke.changed += paintPositions(state.currentPattern, positions, stroke.target, stroke.blank);
+  if (paintFrame === null) paintFrame = requestAnimationFrame(() => { paintFrame = null; renderer.rebuild(); });
+}
+
+function finishPainting(cancelled = false) {
+  if (!activeStroke) return;
+  const stroke = activeStroke; activeStroke = null;
+  if (paintFrame !== null) { cancelAnimationFrame(paintFrame); paintFrame = null; }
+  if (cancelled) restorePatternSnapshot([stroke.snapshot], state.currentPattern);
+  else if (stroke.changed) recordPatternEdit(stroke.snapshot);
+  recalculatePatternStatistics({ preserveBackgroundMask: true });
+  renderStatistics(); renderer.rebuild();
+  if (!cancelled && stroke.changed) $('#paintToolHint').textContent = `本次已修改 ${number.format(stroke.changed)} 格，可点“撤销”整体恢复。`;
+}
+
+function renderBrushPalette() {
+  const query = $('#brushColorSearch').value.trim().toUpperCase();
+  const fragment = document.createDocumentFragment();
+  for (const color of availableColors().filter((item) => `${item.code} ${item.name}`.toUpperCase().includes(query))) {
+    const button = makeButton('palette-swatch', { type: 'button', role: 'radio', 'aria-checked': String(state.brushColorCode === color.code), 'aria-label': getColorDisplayLabel(color) });
+    button.dataset.code = color.code;
+    const swatch = document.createElement('i'); swatch.style.backgroundColor = color.hex;
+    const code = document.createElement('strong'); code.textContent = getColorDisplayCode(color);
+    const name = document.createElement('small'); name.textContent = color.name;
+    button.append(swatch, code, name); fragment.append(button);
+  }
+  $('#brushPalette').replaceChildren(fragment);
+  $('#brushPaletteHint').textContent = state.useOwnedPalette ? `只显示已有的 ${state.ownedColorCodes.length} 个色号及留白` : '完整 MARD 色板；橡皮擦和留白均不计入用豆数量';
+}
 
 function formatBytes(bytes) {
   return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
@@ -211,12 +318,13 @@ function markDirty() {
 }
 
 function scheduleDraftSave() {
-  if (state.image && state.sourceImage && !state.generating) autoDraft.schedule();
+  if (state.image && state.sourceImage && !state.generating && !activeStroke) autoDraft.schedule();
 }
 
 function syncHistoryControls() {
   $('#undoEdit').disabled = state.generating || !state.patternUndoHistory.length;
   $('#redoEdit').disabled = state.generating || !state.patternRedoHistory.length;
+  syncPaintTools();
 }
 
 function recordPatternEdit(snapshot) {
@@ -226,6 +334,7 @@ function recordPatternEdit(snapshot) {
 }
 
 function setWorkspacePanel(panel) {
+  finishPainting();
   $('#resultSection').dataset.panel = panel;
   $$('[data-workspace-panel]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.workspacePanel === panel)));
   if (panel === 'canvas') requestAnimationFrame(() => { renderer.resize(); renderer.fit(); });
@@ -233,6 +342,8 @@ function setWorkspacePanel(panel) {
 }
 
 function syncWorkspace() {
+  state.editTool = 'select';
+  ownedPalette.sync();
   const active = Boolean(state.currentPattern);
   $('#resultSection').hidden = !active;
   $('.creator-layout').hidden = active;
@@ -354,8 +465,9 @@ async function captureProjectDocument(requestedName) {
       crop: state.crop, transform: state.transform, adjustments: state.adjustments,
       colorStyle: state.colorStyle, maxColors: state.maxColors,
       currentSize: state.currentSize, dirty: state.dirty, options: state.options,
+      useOwnedPalette: state.useOwnedPalette, ownedColorCodes: state.ownedColorCodes,
     },
-    pattern: state.currentPattern,
+    pattern: activeStroke?.snapshot || state.currentPattern,
     preferences: {
       previewMode: state.previewMode, recentColors: recentReplacementCodes,
       watermark: {
@@ -478,6 +590,8 @@ async function openProject(file, { draft = false } = {}) {
       adjustments: project.settings.adjustments,
       colorStyle: project.settings.colorStyle,
       maxColors: project.settings.maxColors,
+      useOwnedPalette: project.settings.useOwnedPalette,
+      ownedColorCodes: project.settings.ownedColorCodes,
       currentSize: project.settings.currentSize,
       currentPattern: project.pattern,
       previewMode: project.preferences.previewMode,
@@ -843,6 +957,7 @@ function selectCellRange(cell) {
 }
 
 function handlePatternCellTap(cell, { shiftKey = false, ctrlKey = false, metaKey = false } = {}) {
+  if (state.generating || state.editTool !== 'select') return;
   const intent = getPatternTapIntent(
     state.selectedCellPositions.size,
     state.selectedCellPositions.has(cell.position),
@@ -885,12 +1000,13 @@ async function generatePreparedPattern({
   $('#progressFill').style.width = '8%'; updateProgress(8);
   try {
     await new Promise(requestAnimationFrame);
+    const allowed = resolveAllowedPaletteIndices(state.palette, state.useOwnedPalette, state.ownedColorCodes, allowedPaletteIndices);
     const pattern = await generatePattern({
       pixels, width, height,
       palette: state.palette
         .filter((color) => !color.manualOnly)
         .map(({ code, name, hex, rgb }) => ({ code, name, hex, rgb })),
-      maxColors: recovery ? Math.max(48, state.maxColors) : state.maxColors,
+      maxColors: recovery && !state.useOwnedPalette ? Math.max(48, state.maxColors) : state.maxColors,
       reduceIsolated: recovery ? false : state.options.reduceIsolated,
       mergeColors: !allowedPaletteIndices?.length,
       protectDarkOutline: recovery ? false : shouldProtectDarkOutline(state.colorStyle),
@@ -899,7 +1015,8 @@ async function generatePreparedPattern({
       darkCoverage: recovery ? null : darkCoverage,
       structureEdges: recovery ? null : structureEdges,
       detailMask: recovery ? null : detailMask,
-      allowedPaletteIndices,
+      allowedPaletteIndices: allowed,
+      limitAllowedColors: state.useOwnedPalette,
       onProgress: updateProgress,
     });
     if (version !== generationVersion) return;
@@ -1034,6 +1151,9 @@ function changeTransform(action) {
 }
 
 function setMode(mode) {
+  renderer.clearPendingTap();
+  finishPainting();
+  if (mode === 'effect') state.editTool = 'move';
   if (mode !== 'pattern') clearSelectedCells({ redraw: false });
   state.previewMode = mode;
   state.viewport = { zoom: 1, x: 0, y: 0 };
@@ -1043,6 +1163,7 @@ function setMode(mode) {
   });
   renderer.rebuild(); renderer.fit();
   updateCellSelectionUi();
+  syncPaintTools();
   scheduleDraftSave();
   if (mode === 'pattern' && window.matchMedia('(max-width: 760px)').matches) {
     const rect = $('#resultStage').getBoundingClientRect();
@@ -1079,8 +1200,9 @@ function updateReplacementTarget() {
 function renderReplacementPalette() {
   const container = $('#replacementPalette');
   const query = $('#replacementSearch').value.trim().toLocaleUpperCase('zh-CN');
+  $('#replaceColorDialog .replace-search span').textContent = state.useOwnedPalette ? `从已有的 ${state.ownedColorCodes.length} 色与留白中选择` : '从完整221色色卡中选择';
   const fragment = document.createDocumentFragment();
-  const matchedColors = state.palette.filter((color) => (
+  const matchedColors = availableColors().filter((color) => (
     !query
     || color.code.toLocaleUpperCase('zh-CN').includes(query)
     || color.name.toLocaleUpperCase('zh-CN').includes(query)
@@ -1308,6 +1430,7 @@ function applyPatternCrop() {
 }
 
 function undoLastPatternEdit(redo = false) {
+  finishPainting();
   if (state.generating) return;
   const previousWidth = state.currentPattern?.width;
   const previousHeight = state.currentPattern?.height;
@@ -1346,14 +1469,14 @@ function applyColorReplacement() {
   const cellReplacement = Boolean(replacementCell);
   const selectedCount = replacementCells?.length || 0;
   const snapshot = createPatternStateSnapshot(state.currentPattern);
-  const replaced = batchReplacement
-    ? replacePatternCells(state.currentPattern, replacementCells, target.index)
-    : cellReplacement
-      ? Number(replacePatternCell(state.currentPattern, replacementCell.position, target.index))
-      : replacePatternColor(state.currentPattern, source.index, target.index);
+  if (!availableColors().some((color) => color.index === target.index)) return notify('目标颜色不在已有色号中，请重新选色', 'error');
+  const blank = state.palette.find((color) => color.manualOnly);
+  const positions = batchReplacement ? replacementCells : cellReplacement ? [replacementCell.position]
+    : [...state.currentPattern.indices.keys()].filter((position) => state.currentPattern.indices[position] === source.index && !state.currentPattern.backgroundMask?.[position]);
+  const replaced = paintPositions(state.currentPattern, positions, target.index, blank.index);
   if (!replaced) return notify(batchReplacement ? '所选格子已经是这个颜色' : '当前格子的颜色没有发生变化', 'error');
 
-  if (!recalculatePatternStatistics()) {
+  if (!recalculatePatternStatistics({ preserveBackgroundMask: true })) {
     if (snapshot) state.currentPattern.indices.set(snapshot.indices);
     recalculatePatternStatistics();
     return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
@@ -1386,11 +1509,11 @@ function replaceCellWithBlank(cell) {
   if (!blank) return notify('纯白留白加载失败，请刷新页面', 'error');
   if (cell.colorIndex === blank.index) return notify('这个格子已经是纯白留白');
   const snapshot = createPatternStateSnapshot(state.currentPattern);
-  if (!replacePatternCell(state.currentPattern, cell.position, blank.index)) {
+  if (!paintPositions(state.currentPattern, [cell.position], blank.index, blank.index)) {
     return notify('当前格子没有发生变化', 'error');
   }
 
-  if (!recalculatePatternStatistics()) {
+  if (!recalculatePatternStatistics({ preserveBackgroundMask: true })) {
     if (snapshot) state.currentPattern.indices.set(snapshot.indices);
     recalculatePatternStatistics();
     return notify('快捷留白后的颜色统计校验失败，请重新生成图纸', 'error');
@@ -1659,6 +1782,21 @@ async function initializeExample() {
 }
 
 function bindWorkspace() {
+  $$('[data-edit-tool]').forEach((button) => button.addEventListener('click', () => setEditTool(button.dataset.editTool)));
+  $('#chooseBrushColor').addEventListener('click', () => {
+    finishPainting(); $('#brushColorSearch').value = ''; renderBrushPalette(); $('#brushColorDialog').showModal();
+  });
+  $('#closeBrushColor').addEventListener('click', () => $('#brushColorDialog').close());
+  $('#brushColorSearch').addEventListener('input', renderBrushPalette);
+  $('#brushPalette').addEventListener('click', (event) => {
+    const code = event.target.closest('[data-code]')?.dataset.code;
+    if (!availableColors().some((color) => color.code === code)) return;
+    state.brushColorCode = code; rememberReplacementColor(code);
+    $('#brushColorDialog').close();
+    if (!['brush', 'fill'].includes(state.editTool)) setEditTool('brush');
+    syncPaintTools();
+  });
+  syncPaintTools();
   $('#undoEdit').addEventListener('click', () => undoLastPatternEdit());
   $('#redoEdit').addEventListener('click', () => undoLastPatternEdit(true));
   $('#fitCanvas').addEventListener('click', () => renderer.fit());
@@ -1693,7 +1831,7 @@ function bindWorkspace() {
   });
   $('#retryDraft').addEventListener('click', () => autoDraft.flush());
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') autoDraft.flush();
+    if (document.visibilityState === 'hidden') { finishPainting(); autoDraft.flush(); }
   });
   window.addEventListener('pagehide', () => autoDraft.flush());
   window.addEventListener('beforeunload', (event) => {
@@ -1712,6 +1850,11 @@ document.addEventListener('keydown', (event) => {
   const target = event.target;
   const editingText = target instanceof HTMLElement
     && (target.matches('input, textarea, [contenteditable="true"]') || target.isContentEditable);
+  if (!editingText && !document.querySelector('dialog[open]') && !event.ctrlKey && !event.metaKey && !event.altKey && state.currentPattern) {
+    const shortcut = { b: 'brush', e: 'eraser', g: 'fill', v: 'move', s: 'select' }[event.key.toLowerCase()];
+    if (shortcut) { event.preventDefault(); setEditTool(shortcut); return; }
+    if (event.key === 'Escape' && activeStroke) { finishPainting(true); return; }
+  }
   const undoShortcut = (event.ctrlKey || event.metaKey)
     && !event.shiftKey
     && !event.altKey

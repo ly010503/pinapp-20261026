@@ -124,9 +124,14 @@ function normalizeImage(image) {
   };
 }
 
-function normalizeSettings(settings) {
+function normalizeSettings(settings, paletteCodes = []) {
   if (!isObject(settings) || !isObject(settings.currentSize)) fail('工程设置无效');
+  const ownedColorCodes = [...new Set(Array.isArray(settings.ownedColorCodes) ? settings.ownedColorCodes : [])]
+    .filter((code) => code !== '__BLANK__' && paletteCodes.includes(code));
+  if (settings.useOwnedPalette && !ownedColorCodes.length) fail('工程中没有可用的个人色号');
   return {
+    useOwnedPalette: Boolean(settings.useOwnedPalette),
+    ownedColorCodes,
     crop: normalizeCrop(settings.crop),
     transform: normalizeTransform(settings.transform),
     adjustments: normalizeAdjustments(settings.adjustments),
@@ -210,6 +215,7 @@ export function createProjectDocument({ name, image, settings, pattern, preferen
       adjustments: { ...settings.adjustments },
       currentSize: { ...settings.currentSize },
       options: { ...settings.options },
+      ownedColorCodes: [...(settings.ownedColorCodes || [])],
     },
     pattern: patternDocument,
     preferences: {
@@ -234,7 +240,7 @@ export function parseProjectDocument(text, { paletteCodes } = {}) {
   if (!isObject(document) || document.format !== PROJECT_FORMAT) fail('这不是拼豆工程文件');
   if (document.version !== PROJECT_VERSION) fail('工程文件版本暂不支持，请更新网站后再试');
   const image = normalizeImage(document.image);
-  const settings = normalizeSettings(document.settings);
+  const settings = normalizeSettings(document.settings, paletteCodes);
   const pattern = normalizePattern(document.pattern, paletteCodes);
   const preferences = normalizePreferences(document.preferences, Boolean(pattern));
   return {

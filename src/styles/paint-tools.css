@@ -1,0 +1,42 @@
+.paint-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.paint-toolbar button { min-height: 42px; padding: 0 11px; border: 1px solid var(--border); border-radius: 10px; background: #fff; font-size: 12px; font-weight: 700; }
+.paint-toolbar button[aria-pressed="true"] { background: var(--lavender); color: #fff; border-color: var(--lavender); }
+.paint-toolbar button:disabled { opacity: .45; cursor: default; }
+#chooseBrushColor { display: inline-flex; align-items: center; gap: 6px; }
+#brushColorSwatch { width: 19px; height: 19px; border-radius: 6px; border: 1px solid #bbb; }
+.paint-tool-hint { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 6px 0 12px; }
+.result-stage[data-tool="brush"], .result-stage[data-tool="fill"], .result-stage[data-tool="eraser"] { cursor: crosshair; }
+.owned-palette-card { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
+.owned-palette-card label { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.owned-palette-card input { width: 19px; height: 19px; accent-color: var(--lavender); }
+.owned-palette-card p, .owned-palette-card small { display: block; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.owned-palette-card button { width: 100%; font-size: 12px; margin-bottom: 7px; }
+.owned-palette-dialog { width: min(94vw,620px); height: min(94dvh,940px); }
+.owned-palette-dialog h2 { margin-bottom: 10px; }
+.profile-row { display: flex; min-width: 0; flex: 0 0 auto; gap: 7px; margin: 8px 0; }
+.profile-row input, .profile-row select { min-width: 0; flex: 1; width: 0; min-height: 42px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--ink); font: inherit; font-size: 12px; }
+.profile-row button { min-height: 42px; font-size: 12px; }
+.owned-quick-actions { display: flex; flex-wrap: wrap; gap: 6px; flex: 0 0 auto; }
+.owned-quick-actions button { padding: 8px 10px; min-height: 38px; border-radius: 9px; background: #f6f2fa; font-size: 11px; }
+.owned-palette-dialog .replace-search { margin-top: 8px; }
+.owned-palette-dialog .replace-search input { min-height: 40px; font-size: 13px; }
+.owned-palette-dialog .replace-search span { font-size: 11px; }
+#applyOwnedCodes { min-height: 36px; margin-top: 6px; font-size: 11px; flex: 0 0 auto; }
+#ownedSelectedCount { flex: 0 0 auto; margin: 7px 0; }
+#ownedPaletteGrid { min-height: 80px; }
+.owned-palette-dialog .palette-swatch { min-height: 60px; }
+.palette-swatch[aria-checked="true"] { border-color: var(--lavender); background: var(--lavender-soft); box-shadow: inset 0 0 0 1px var(--lavender); }
+.palette-swatch[aria-checked="true"]::before { content: '✓'; position: absolute; right: 4px; top: 2px; color: var(--lavender-dark); font-size: 12px; }
+@media (min-width:1180px) {
+  .result-stage { height: calc(100dvh - 445px); min-height: 270px; }
+  .paint-toolbar button { padding: 0 9px; font-size: 11px; }
+}
+@media (max-width:759px) {
+  .paint-toolbar { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .paint-toolbar button { min-height: 40px; padding: 0 6px; font-size: 11px; }
+  .paint-tool-hint { font-size: 10px; }
+  .result-stage { height: calc(100dvh - 525px); min-height: 280px; }
+  .owned-palette-dialog { padding: 16px; }
+  .owned-palette-dialog .replace-search { margin-top: 5px; }
+  .owned-palette-dialog h2 { font-size: 20px; }
+}

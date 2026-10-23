@@ -93,6 +93,12 @@
               <div class="step-heading"><span class="step-number pink">4</span><div><h2>最多允许多少种颜色？</h2><p>系统会自动识别实际颜色，你只需设置上限</p></div></div>
               <div id="colorCards" class="color-cards" role="radiogroup" aria-label="选择最大颜色数量上限"></div>
               <p class="auto-color-note">自动识别不会强行用满颜色，最终数量会显示在用豆清单中。</p>
+              <div class="owned-palette-card">
+                <label><input id="useOwnedPalette" type="checkbox" /> 仅使用我已有的色号</label>
+                <p id="ownedPaletteSummary">未限制色号，使用完整 MARD 色库</p>
+                <button id="openOwnedPalette" type="button" class="soft-button">管理我的色号</button>
+                <small>颜色数量上限与可用色号分别设置；更改后重新生成生效。</small>
+              </div>
               <p class="palette-note"><strong>MARD 标准 221 色</strong> · 屏幕颜色为近似值，购豆请以色号和实体色卡为准。</p>
             </article>
 
@@ -166,6 +172,15 @@
           <button id="fitCanvas" type="button">适应画布</button>
           <button id="zoomIn" type="button" aria-label="放大图纸">＋</button>
         </div>
+        <div class="paint-toolbar" role="group" aria-label="图纸编辑工具">
+          <button type="button" data-edit-tool="select" aria-pressed="true">选格换色</button>
+          <button type="button" data-edit-tool="move" aria-pressed="false">移动</button>
+          <button type="button" data-edit-tool="brush" aria-pressed="false">画笔</button>
+          <button type="button" data-edit-tool="eraser" aria-pressed="false">橡皮擦</button>
+          <button type="button" data-edit-tool="fill" aria-pressed="false">区域填色</button>
+          <button id="chooseBrushColor" type="button"><i id="brushColorSwatch" aria-hidden="true"></i><span id="brushColorLabel">画笔色 H7</span></button>
+        </div>
+        <p id="paintToolHint" class="paint-tool-hint" role="status">制作图中点击单格换色；拖动可平移。</p>
         <div class="mode-switch" role="tablist" aria-label="图纸模式">
           <button class="active" data-mode="effect" role="tab" aria-selected="true">效果图</button>
           <button data-mode="pattern" role="tab" aria-selected="false">制作图</button>
@@ -320,6 +335,27 @@
       </div>
     </dialog>
 
+    <dialog id="brushColorDialog" class="replace-dialog">
+      <button id="closeBrushColor" type="button" class="icon-close" aria-label="关闭画笔选色">×</button>
+      <span class="eyebrow">选好颜色，再开始画</span><h2>选择画笔颜色</h2>
+      <label class="replace-search"><span>搜索色号或名称</span><input id="brushColorSearch" type="search" placeholder="例如 H7、F5" autocomplete="off" /></label>
+      <p id="brushPaletteHint" class="paint-tool-hint"></p>
+      <div id="brushPalette" class="replacement-palette" role="radiogroup" aria-label="画笔可用颜色"></div>
+    </dialog>
+
+    <dialog id="ownedPaletteDialog" class="replace-dialog owned-palette-dialog">
+      <button id="closeOwnedPalette" type="button" class="icon-close" aria-label="关闭我的色号">×</button>
+      <span class="eyebrow">按手头的豆子来配色</span><h2>我的豆子色号</h2>
+      <div class="profile-row"><select id="ownedProfileSelect" aria-label="已保存的个人色板"><option value="">选择已保存的色板</option></select><button id="loadOwnedProfile" type="button" class="soft-button">载入</button></div>
+      <div class="owned-quick-actions"><button id="selectAllOwned" type="button">全选221色</button><button id="clearOwned" type="button">清空选择</button><button id="usePatternColors" type="button">选当前图纸用色</button></div>
+      <label class="replace-search"><span>批量录入色号，用空格或逗号分隔</span><input id="ownedCodesInput" type="text" placeholder="例如 H2 H7 F5 C20" /></label>
+      <button id="applyOwnedCodes" type="button" class="soft-button">按录入内容选择</button>
+      <label class="replace-search"><span>搜索并勾选色号</span><input id="ownedColorSearch" type="search" placeholder="搜索色号或色系" /></label>
+      <p id="ownedSelectedCount" class="paint-tool-hint" aria-live="polite">已选择 0 色</p>
+      <div id="ownedPaletteGrid" class="replacement-palette" role="group" aria-label="我已有的MARD色号"></div>
+      <div class="profile-row"><input id="ownedProfileName" type="text" maxlength="40" placeholder="色板名称，例如我的常用豆" aria-label="个人色板名称" /><button id="saveOwnedProfile" type="button" class="soft-button">保存色板</button></div>
+      <div class="replace-dialog-footer"><button id="confirmOwnedPalette" type="button" class="primary-button">使用这些色号</button></div>
+    </dialog>
     <div id="toastRegion" class="toast-region" aria-live="polite"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

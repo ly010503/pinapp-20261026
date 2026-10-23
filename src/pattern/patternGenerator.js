@@ -27,7 +27,7 @@ function getWorker() {
   return worker;
 }
 
-export function generatePattern({ pixels, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline = true, orderedColorCleanup = false, subjectMask = null, darkCoverage = null, structureEdges = null, detailMask = null, allowedPaletteIndices = null, onProgress }) {
+export function generatePattern({ pixels, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline = true, orderedColorCleanup = false, subjectMask = null, darkCoverage = null, structureEdges = null, detailMask = null, allowedPaletteIndices = null, limitAllowedColors = false, onProgress }) {
   const id = ++sequence;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject, onProgress });
@@ -49,6 +49,6 @@ export function generatePattern({ pixels, width, height, palette, maxColors, red
     if (darkCoverageTransferable) transfers.push(darkCoverageTransferable);
     if (structureEdgesTransferable) transfers.push(structureEdgesTransferable);
     if (detailMaskTransferable) transfers.push(detailMaskTransferable);
-    getWorker().postMessage({ type: 'generate', id, pixels: transferable, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline, orderedColorCleanup, subjectMask: subjectTransferable, darkCoverage: darkCoverageTransferable, structureEdges: structureEdgesTransferable, detailMask: detailMaskTransferable, allowedPaletteIndices }, transfers);
+    getWorker().postMessage({ type: 'generate', id, pixels: transferable, width, height, palette, maxColors, reduceIsolated, mergeColors, protectDarkOutline, orderedColorCleanup, subjectMask: subjectTransferable, darkCoverage: darkCoverageTransferable, structureEdges: structureEdgesTransferable, detailMask: detailMaskTransferable, allowedPaletteIndices, limitAllowedColors }, transfers);
   });
 }
