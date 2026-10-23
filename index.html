@@ -15,25 +15,31 @@
         <div class="bead-logo" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <div><h1>拼豆图纸生成器</h1><p>把喜欢的图片变成可以照着制作的拼豆图纸</p></div>
       </div>
-      <div class="hero-decor decor-right" aria-hidden="true"><i></i><i></i><i></i></div>
+      <nav class="header-actions" aria-label="工程文件">
+        <span id="draftStatus" role="status">图片在本地处理</span>
+        <button id="retryDraft" type="button" hidden>重试保存</button>
+        <button id="openProjectButton" type="button">打开工程</button>
+        <button id="saveProjectButton" type="button" disabled>保存工程</button>
+        <input id="projectFileInput" type="file" accept=".perlerproj,application/json,application/gzip" hidden />
+      </nav>
     </header>
 
     <main class="page-shell">
-      <section class="project-toolbar" aria-label="工程文件">
-        <div>
-          <span class="eyebrow">跨电脑接着做</span>
-          <strong>保存或打开工程</strong>
-          <small>工程包含原图、设置和当前图纸，只在本地读取与保存</small>
-        </div>
-        <div class="project-toolbar-actions">
-          <button id="openProjectButton" type="button">打开工程</button>
-          <button id="saveProjectButton" type="button" disabled>保存工程</button>
-          <input id="projectFileInput" type="file" accept=".perlerproj,application/json,application/gzip" hidden />
-        </div>
+      <section id="introSection" class="intro-section">
+        <span class="eyebrow">把喜欢，拼成一颗颗小美好</span>
+        <h2>从一张图片，到你的拼豆作品</h2>
+        <p>上传图片，选好尺寸和颜色，生成可以继续修改的图纸。</p>
+        <div class="intro-tags"><span>本地处理</span><span>MARD 221 色</span><span>高清图纸与用豆清单</span></div>
+      </section>
+      <section id="draftCard" class="draft-card" aria-label="上次的本机草稿" hidden>
+        <img id="draftThumbnail" alt="上次草稿缩略图" />
+        <div><span class="eyebrow">上次还没拼完的喜欢</span><strong id="draftName"></strong><p id="draftMeta"></p></div>
+        <button id="restoreDraft" class="soft-button" type="button">继续制作</button>
+        <small>仅保存在当前浏览器；跨电脑请保存工程文件。清除网站数据会移除草稿。</small>
       </section>
 
       <section class="creator-layout" aria-label="制作拼豆图纸">
-        <div class="setup-column">
+        <div id="setupColumn" class="setup-column">
           <article class="card upload-card">
             <div class="step-heading"><span class="step-number">1</span><div><h2>上传一张你喜欢的图片</h2><p>照片、动漫、宠物、头像都可以</p></div></div>
             <div id="uploadZone" class="upload-zone" tabindex="0" role="button" aria-label="上传图片">
@@ -58,7 +64,7 @@
               <button id="resolveLinkButton" type="submit">读取链接图片</button>
             </form>
             <p id="linkImportHint" class="link-import-hint">仅支持公开图文作品；视频作品暂不支持。</p>
-            <p class="privacy-note"><span aria-hidden="true">♡</span> 相册图片在浏览器本地处理；链接图片仅临时转发，不会保存</p>
+            <p class="privacy-note"><span aria-hidden="true">♡</span> 相册图片不上传服务器；草稿自动保存在当前浏览器。链接图片仅临时转发。</p>
           </article>
 
           <div id="settingsArea" hidden>
@@ -117,12 +123,17 @@
           </div>
         </div>
 
-        <aside class="preview-column">
+        <aside id="sourceHome" class="preview-column">
           <article id="welcomeCard" class="card welcome-card">
-            <div class="bead-flower" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-            <h2>第一次做也没问题</h2>
-            <p>上传图片后，使用推荐设置就能直接生成。颜色匹配、格子整理和编号都会自动完成。</p>
-            <ul><li><span>1</span> 上传并调整图片</li><li><span>2</span> 选择尺寸和颜色</li><li><span>3</span> 保存图纸开始制作</li></ul>
+            <span class="eyebrow">先看看，会变成什么样</span>
+            <h2>一只小猫，两种可爱</h2>
+            <div class="example-comparison">
+              <figure><img id="exampleImage" src="./assets/cat-comic-white-v2-perler-base.png" alt="灰色虎斑小猫原图" /><figcaption>喜欢的原图</figcaption></figure>
+              <figure><canvas id="examplePattern" aria-label="小猫生成的拼豆图纸示例"></canvas><figcaption>带色号的制作图</figcaption></figure>
+            </div>
+            <p id="exampleSummary">同一张图，自动配色、数豆、标色号。</p>
+            <button id="tryExample" type="button" class="soft-button">用这张小猫试做 →</button>
+            <div class="feature-notes"><span>旧图纸也能恢复编辑</span><span>分色定位图与镜像导出</span></div>
           </article>
           <article id="sourceCard" class="card source-card" hidden>
             <div class="card-title-row"><div><span class="eyebrow">图片预览</span><h2>这张图片会变成拼豆图</h2></div><span id="cropBadge" class="mini-badge" hidden>已裁剪</span></div>
@@ -138,8 +149,23 @@
         <div class="progress-track"><i id="progressFill"></i></div>
       </section>
 
-      <section id="resultSection" class="result-section" hidden>
-        <div class="result-heading"><span class="success-sticker">✓</span><div><span class="eyebrow">图纸完成啦</span><h2>你的拼豆图纸</h2><p>可以先看整体效果，再切换制作图查看编号</p></div></div>
+      <section id="resultSection" class="result-section" data-panel="canvas" aria-label="图纸编辑工作区" hidden>
+        <nav class="workspace-tabs" aria-label="工作区面板">
+          <button type="button" data-workspace-panel="settings" aria-pressed="false">调整设置</button>
+          <button type="button" data-workspace-panel="canvas" aria-pressed="true">图纸编辑</button>
+          <button type="button" data-workspace-panel="materials" aria-pressed="false">用豆与导出</button>
+        </nav>
+        <aside id="workspaceSettings" class="workspace-settings" aria-label="图纸设置"><div id="workspaceSource"></div></aside>
+        <div class="workspace-canvas">
+        <div class="result-heading"><span class="success-sticker">✓</span><div><span class="eyebrow">可以开始精修啦</span><h2>你的拼豆图纸</h2><p>调整设置、修改单格，随时查看用豆与导出</p></div></div>
+        <div class="canvas-actions" aria-label="画布操作">
+          <button id="undoEdit" type="button" disabled title="撤销 Ctrl+Z">↶ 撤销</button>
+          <button id="redoEdit" type="button" disabled title="重做 Ctrl+Shift+Z / Ctrl+Y">↷ 重做</button>
+          <span></span>
+          <button id="zoomOut" type="button" aria-label="缩小图纸">−</button>
+          <button id="fitCanvas" type="button">适应画布</button>
+          <button id="zoomIn" type="button" aria-label="放大图纸">＋</button>
+        </div>
         <div class="mode-switch" role="tablist" aria-label="图纸模式">
           <button class="active" data-mode="effect" role="tab" aria-selected="true">效果图</button>
           <button data-mode="pattern" role="tab" aria-selected="false">制作图</button>
@@ -156,13 +182,15 @@
               <button id="replaceSelectedCells" type="button">批量换色</button>
             </div>
           </div>
-          <p class="gesture-hint">轻点单格换色 · Ctrl+点击逐格多选 · Shift+点击两点框选 · 多选后轻点已选色块批量换色 · Ctrl+Z撤销</p>
+          <p class="gesture-hint">制作图中轻点换色 · 拖动平移，双指或滚轮缩放 · Ctrl 多选 / Shift 框选</p>
         </div>
         <div class="pattern-crop-bar">
           <div><strong>需要调整图纸边缘？</strong><span>可以居中裁切或补空白格，不会重新识别已有颜色</span></div>
           <button id="openPatternCrop" type="button">↔ 调整图纸尺寸</button>
         </div>
 
+        </div>
+        <aside class="workspace-materials" aria-label="用豆与导出">
         <article class="card stats-card">
           <div class="stats-title"><div><span class="eyebrow">本次图纸</span><h2>用豆清单</h2></div><span id="actualColorBadge" class="actual-color-badge"></span></div>
           <div class="summary-grid">
@@ -198,6 +226,8 @@
           <button id="saveMirroredPattern" class="secondary-save mirror-save"><span>⇆</span>保存镜像制作图</button>
           <button id="saveProjectResultButton" class="secondary-save project-save" type="button"><span>⌁</span>保存工程，换电脑继续</button>
         </div>
+        <p class="draft-footnote">本机草稿自动保存；下载工程文件可换电脑继续。</p>
+        </aside>
       </section>
     </main>
 

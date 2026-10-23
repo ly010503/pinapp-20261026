@@ -60,6 +60,21 @@ test('工程文件能完整恢复图纸和编辑设置，但不包含撤销历�
   assert.equal('patternUndoHistory' in restored, false);
 });
 
+test('工程保留原来的留白蒙版，并兼容没有蒙版的旧工程', () => {
+  const document = createExampleDocument();
+  document.pattern.backgroundMask = btoa(String.fromCharCode(0, 1));
+  const restored = parseProjectDocument(serializeProjectDocument(document), { paletteCodes });
+  assert.deepEqual([...restored.pattern.backgroundMask], [0, 1]);
+  const saved = createProjectDocument({
+    ...restored, paletteCodes,
+  });
+  assert.equal(saved.pattern.backgroundMask, document.pattern.backgroundMask);
+  delete document.pattern.backgroundMask;
+  assert.equal(parseProjectDocument(serializeProjectDocument(document), { paletteCodes }).pattern.backgroundMask, null);
+  document.pattern.backgroundMask = btoa(String.fromCharCode(0, 2));
+  assert.throws(() => parseProjectDocument(serializeProjectDocument(document), { paletteCodes }), /留白/);
+});
+
 test('工程名称会清理非法文件名字符并自动添加后缀', () => {
   assert.equal(normalizeProjectName(' 小猫:头像?.perlerproj '), '小猫-头像-');
   assert.equal(getProjectDownloadFileName('夏日拼豆'), '夏日拼豆.perlerproj');

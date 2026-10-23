@@ -5,6 +5,7 @@ import {
   createPatternStateSnapshot,
   pushPatternSnapshot,
   restorePatternSnapshot,
+  transferPatternSnapshot,
 } from '../src/pattern/undoHistory.js';
 
 test('撤销会恢复最近一次修改前的图纸', () => {
@@ -19,6 +20,29 @@ test('撤销会恢复最近一次修改前的图纸', () => {
   assert.deepEqual([...pattern.indices], [1, 9, 3, 4]);
   assert.equal(restorePatternSnapshot(history, pattern), true);
   assert.deepEqual([...pattern.indices], [1, 2, 3, 4]);
+});
+
+test('撤销和重做尺寸调整后，完整还原像素与留白，快照不会被后续编辑污染', () => {
+  const pattern = {
+    width: 2, height: 1, indices: new Uint8Array([1, 2]),
+    sourcePixels: new Uint8ClampedArray(8).fill(10), backgroundMask: new Uint8Array([0, 1]),
+  };
+  const undo = [createPatternStateSnapshot(pattern)], redo = [];
+  Object.assign(pattern, {
+    width: 1, height: 1, indices: new Uint8Array([3]),
+    sourcePixels: new Uint8ClampedArray(4).fill(20), backgroundMask: new Uint8Array([0]),
+  });
+  assert.equal(transferPatternSnapshot(undo, redo, pattern), true);
+  assert.deepEqual([...pattern.indices], [1, 2]);
+  assert.deepEqual([...pattern.backgroundMask], [0, 1]);
+  assert.equal(transferPatternSnapshot(redo, undo, pattern), true);
+  assert.equal(pattern.width, 1);
+  assert.deepEqual([...pattern.sourcePixels], [20, 20, 20, 20]);
+  pattern.indices[0] = 8;
+  assert.equal(transferPatternSnapshot(undo, redo, pattern), true);
+  assert.deepEqual([...pattern.indices], [1, 2]);
+  assert.equal(transferPatternSnapshot(redo, undo, pattern), true);
+  assert.deepEqual([...pattern.indices], [8]);
 });
 
 test('撤销历史会限制数量并忽略尺寸不匹配的旧图纸', () => {

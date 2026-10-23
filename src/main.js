@@ -1,5 +1,6 @@
 import 'cropperjs/dist/cropper.css';
 import './styles/app.css';
+import './styles/workspace.css';
 import paletteJson from './data/palettes/mard-221.json';
 import {
   PATTERN_SIZES,
@@ -42,10 +43,9 @@ import {
 } from './pattern/cellSelection.js';
 import { getPatternResizeAdjustments, resizePattern } from './pattern/patternCrop.js';
 import {
-  createPatternSnapshot,
   createPatternStateSnapshot,
   pushPatternSnapshot,
-  restorePatternSnapshot,
+  transferPatternSnapshot,
 } from './pattern/undoHistory.js';
 import { ResultCanvasRenderer } from './canvas/resultCanvasRenderer.js';
 import {
@@ -66,6 +66,9 @@ import {
   serializeProjectDocument,
 } from './project/projectFile.js';
 import { notify } from './ui/notifications.js';
+import { drawPatternSheet } from './canvas/patternPainter.js';
+import { createAutoDraft } from './project/autoDraft.js';
+import { readLatestDraft, writeLatestDraft } from './project/draftStore.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -87,6 +90,31 @@ let replacementCells = null;
 let pendingGridRecovery = null;
 let currentLinkedPost = null;
 let recentReplacementCodes = loadRecentReplacementCodes();
+let latestDraft = null;
+const autoDraft = createAutoDraft({
+  capture: async () => {
+    const image = state.image;
+    const project = await captureProjectDocument(state.projectName);
+    if (!project) return null;
+    const thumbnail = document.createElement('canvas');
+    thumbnail.width = 120; thumbnail.height = 150;
+    const context = thumbnail.getContext('2d');
+    const scale = Math.min(120 / image.naturalWidth, 150 / image.naturalHeight);
+    context.drawImage(image, (120 - image.naturalWidth * scale) / 2, (150 - image.naturalHeight * scale) / 2, image.naturalWidth * scale, image.naturalHeight * scale);
+    return { project, name: project.name, updatedAt: project.savedAt, thumbnail: thumbnail.toDataURL('image/png') };
+  },
+  write: writeLatestDraft,
+  onStatus: (status, value) => {
+    const label = $('#draftStatus');
+    label.dataset.status = status;
+    label.textContent = status === 'saved' ? '本机草稿已保存'
+      : status === 'error' ? '草稿保存失败，请保存工程'
+        : status === 'saving' ? '正在保存本机草稿…' : '草稿有新修改…';
+    label.title = status === 'error' ? String(value?.message || '浏览器存储不可用')
+      : status === 'saved' ? `仅当前浏览器 · ${new Date(value).toLocaleString('zh-CN')}` : '本机草稿仅保存在当前浏览器';
+    $('#retryDraft').hidden = status !== 'error';
+  },
+});
 const renderer = new ResultCanvasRenderer(
   $('#resultCanvas'),
   $('#resultStage'),
@@ -179,6 +207,42 @@ function markDirty() {
     $('#dirtyNotice').hidden = false;
     $('#generateButton').lastChild.textContent = ' 重新生成拼豆图纸';
   }
+  scheduleDraftSave();
+}
+
+function scheduleDraftSave() {
+  if (state.image && state.sourceImage && !state.generating) autoDraft.schedule();
+}
+
+function syncHistoryControls() {
+  $('#undoEdit').disabled = state.generating || !state.patternUndoHistory.length;
+  $('#redoEdit').disabled = state.generating || !state.patternRedoHistory.length;
+}
+
+function recordPatternEdit(snapshot) {
+  pushPatternSnapshot(state.patternUndoHistory, snapshot, PATTERN_UNDO_LIMIT);
+  state.patternRedoHistory.length = 0;
+  syncHistoryControls();
+}
+
+function setWorkspacePanel(panel) {
+  $('#resultSection').dataset.panel = panel;
+  $$('[data-workspace-panel]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.workspacePanel === panel)));
+  if (panel === 'canvas') requestAnimationFrame(() => { renderer.resize(); renderer.fit(); });
+  requestAnimationFrame(drawSourcePreview);
+}
+
+function syncWorkspace() {
+  const active = Boolean(state.currentPattern);
+  $('#resultSection').hidden = !active;
+  $('.creator-layout').hidden = active;
+  $('#introSection').hidden = Boolean(state.image);
+  $('#draftCard').hidden = Boolean(state.image) || !latestDraft;
+  document.body.classList.toggle('editor-active', active);
+  (active ? $('#workspaceSettings') : $('#setupColumn')).append($('#settingsArea'));
+  (active ? $('#workspaceSource') : $('#sourceHome')).append($('#sourceCard'));
+  if (active) setWorkspacePanel('canvas');
+  syncHistoryControls();
 }
 
 function drawSourcePreview() {
@@ -187,8 +251,9 @@ function drawSourcePreview() {
   const canvas = $('#sourcePreview');
   const frame = canvas.parentElement.getBoundingClientRect();
   const dpr = Math.min(devicePixelRatio || 1, 2);
-  const cssWidth = Math.max(280, frame.width);
-  const cssHeight = Math.max(250, frame.height);
+  if (!frame.width || !frame.height) return;
+  const cssWidth = frame.width;
+  const cssHeight = frame.height;
   canvas.width = Math.round(cssWidth * dpr);
   canvas.height = Math.round(cssHeight * dpr);
   canvas.style.width = `${cssWidth}px`;
@@ -278,6 +343,36 @@ function openSaveProjectDialog() {
   requestAnimationFrame(() => { input.focus(); input.select(); });
 }
 
+async function captureProjectDocument(requestedName) {
+  if (!state.image || !state.sourceImage) return null;
+  const source = state.sourceImage;
+  const file = state.file;
+  const project = createProjectDocument({
+    name: normalizeProjectName(requestedName, source.name),
+    image: { ...source },
+    settings: {
+      crop: state.crop, transform: state.transform, adjustments: state.adjustments,
+      colorStyle: state.colorStyle, maxColors: state.maxColors,
+      currentSize: state.currentSize, dirty: state.dirty, options: state.options,
+    },
+    pattern: state.currentPattern,
+    preferences: {
+      previewMode: state.previewMode, recentColors: recentReplacementCodes,
+      watermark: {
+        enabled: $('#tiledWatermarkEnabled').checked,
+        text: normalizeWatermarkText($('#tiledWatermarkText').value),
+      },
+    },
+    paletteCodes: state.palette.map((color) => color.code),
+  });
+  if (!project.image.dataUrl) {
+    if (!file) throw new Error('原始图片缺失，请重新上传');
+    project.image.dataUrl = await fileToDataUrl(file);
+    if (state.sourceImage === source) source.dataUrl = project.image.dataUrl;
+  }
+  return project;
+}
+
 async function saveProject(requestedName) {
   if (!state.image || !state.sourceImage) {
     notify('请先上传图片或打开一个工程', 'error');
@@ -290,47 +385,11 @@ async function saveProject(requestedName) {
   setProjectButtonsDisabled(true);
   try {
     const projectName = normalizeProjectName(requestedName, state.sourceImage.name);
-    let imageDataUrl = state.sourceImage.dataUrl;
-    if (!imageDataUrl) {
-      if (!state.file) throw new Error('原始图片数据缺失，请重新上传后再保存工程');
-      imageDataUrl = await fileToDataUrl(state.file);
-      state.sourceImage = { ...state.sourceImage, dataUrl: imageDataUrl };
-    }
-    const document = createProjectDocument({
-      name: projectName,
-      image: {
-        name: state.sourceImage.name,
-        type: state.sourceImage.type,
-        size: state.sourceImage.size,
-        width: state.sourceImage.width,
-        height: state.sourceImage.height,
-        lastModified: state.sourceImage.lastModified,
-        dataUrl: imageDataUrl,
-      },
-      settings: {
-        crop: state.crop,
-        transform: state.transform,
-        adjustments: state.adjustments,
-        colorStyle: state.colorStyle,
-        maxColors: state.maxColors,
-        currentSize: state.currentSize,
-        dirty: state.dirty,
-        options: state.options,
-      },
-      pattern: state.currentPattern,
-      preferences: {
-        previewMode: state.previewMode,
-        recentColors: recentReplacementCodes,
-        watermark: {
-          enabled: $('#tiledWatermarkEnabled').checked,
-          text: normalizeWatermarkText($('#tiledWatermarkText').value),
-        },
-      },
-      paletteCodes: state.palette.map((color) => color.code),
-    });
+    const document = await captureProjectDocument(projectName);
     const blob = await createProjectBlob(serializeProjectDocument(document));
     downloadProjectBlob(blob, getProjectDownloadFileName(projectName));
     state.projectName = projectName;
+    scheduleDraftSave();
     notify(`工程“${projectName}”已保存，可以发到其他电脑继续制作`, 'success', 5000);
     return true;
   } catch (error) {
@@ -366,6 +425,7 @@ function syncWatermarkSetting() {
   const watermarkText = $('#tiledWatermarkText');
   watermarkText.disabled = !watermarkEnabled.checked;
   $('#exportWatermarkCard').classList.toggle('disabled', !watermarkEnabled.checked);
+  scheduleDraftSave();
 }
 
 function getPatternBackgroundMask(pattern, sourcePixels, colorStyle = state.colorStyle) {
@@ -374,7 +434,7 @@ function getPatternBackgroundMask(pattern, sourcePixels, colorStyle = state.colo
     : null;
 }
 
-async function openProject(file) {
+async function openProject(file, { draft = false } = {}) {
   if (!file) return;
   if (state.generating) return notify('图纸正在生成，请稍后再打开工程');
   let decoded;
@@ -391,7 +451,7 @@ async function openProject(file) {
     }
     let statistics = [];
     if (project.pattern) {
-      project.pattern.backgroundMask = getPatternBackgroundMask(
+      project.pattern.backgroundMask ??= getPatternBackgroundMask(
         project.pattern,
         project.pattern.sourcePixels,
         project.settings.colorStyle,
@@ -430,6 +490,7 @@ async function openProject(file) {
     });
     state.selectedCellPositions.clear();
     state.patternUndoHistory.length = 0;
+    state.patternRedoHistory.length = 0;
     recentReplacementCodes = project.preferences.recentColors;
     try { localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify(recentReplacementCodes)); } catch {}
 
@@ -450,6 +511,7 @@ async function openProject(file) {
     $('#tiledWatermarkText').value = project.preferences.watermark.text || DEFAULT_TILED_WATERMARK;
     syncWatermarkSetting();
     syncRestoredChoices();
+    syncWorkspace();
     setProjectButtonsDisabled(false);
     showAllColors = false;
     updateCellSelectionUi();
@@ -465,10 +527,13 @@ async function openProject(file) {
       renderer.fit();
       requestAnimationFrame(() => $('#resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' }));
     }
-    notify('工程已打开，可以从保存的位置继续制作', 'success', 5000);
+    scheduleDraftSave();
+    notify(draft ? '已恢复本机草稿，可以继续制作' : '工程已打开，可以从保存的位置继续制作', 'success', 5000);
+    return true;
   } catch (error) {
     if (decoded?.url) URL.revokeObjectURL(decoded.url);
     notify(error.message || '工程文件打开失败，请确认文件完整', 'error', 6000);
+    return false;
   }
 }
 
@@ -500,6 +565,9 @@ async function loadFile(file) {
       currentPattern: null, statistics: [], highlightedCode: null, dirty: false,
     });
     state.patternUndoHistory.length = 0;
+    state.patternRedoHistory.length = 0;
+    state.selectedCellPositions.clear();
+    state.selectionAnchorPosition = null;
     pendingGridRecovery = null;
     $('#patternRecoveryStatus').textContent = '自动数格子，并读取每一格的底色';
     generationVersion += 1;
@@ -514,8 +582,10 @@ async function loadFile(file) {
     $('#cropBadge').hidden = true;
     $('#dirtyNotice').hidden = true;
     $('#resultSection').hidden = true;
+    syncWorkspace();
     setProjectButtonsDisabled(false);
     requestAnimationFrame(drawSourcePreview);
+    scheduleDraftSave();
     notify('图片已读取，只会在本地处理', 'success');
     return true;
   } catch (error) {
@@ -718,6 +788,8 @@ function renderStatistics() {
   $('#summaryPhysical').textContent = `约${physicalWidth.toFixed(1)}cm × ${physicalHeight.toFixed(1)}cm`;
   $('#actualColorBadge').textContent = `实际 ${actual} 色`;
   renderColorList();
+  syncHistoryControls();
+  scheduleDraftSave();
 }
 
 function updateCellSelectionUi() {
@@ -805,6 +877,7 @@ async function generatePreparedPattern({
 }) {
   if (state.generating) return;
   state.generating = true;
+  syncHistoryControls();
   const version = ++generationVersion;
   const button = $('#generateButton'); button.disabled = true;
   $('#detectPatternGrid').disabled = true;
@@ -853,6 +926,8 @@ async function generatePreparedPattern({
     state.selectionAnchorPosition = null;
     state.patternUndoHistory.length = 0;
     Object.assign(state, { currentPattern: pattern, statistics, highlightedCode: null, dirty: false, previewMode: 'effect' });
+    state.patternRedoHistory.length = 0;
+    syncWorkspace();
     updateCellSelectionUi();
     showAllColors = false;
     $('#dirtyNotice').hidden = true;
@@ -870,6 +945,8 @@ async function generatePreparedPattern({
     $('#dirtyNotice').textContent = recovery ? '恢复失败，可以重新识别或按普通图片生成' : '生成失败，请点击下方按钮重新生成';
   } finally {
     state.generating = false; button.disabled = false;
+    syncHistoryControls();
+    scheduleDraftSave();
     $('#detectPatternGrid').disabled = false;
     button.lastChild.textContent = state.currentPattern ? ' 重新生成拼豆图纸' : ' 生成我的拼豆图纸';
     setTimeout(() => { if (!state.generating) $('#progressSection').hidden = true; }, 700);
@@ -966,6 +1043,7 @@ function setMode(mode) {
   });
   renderer.rebuild(); renderer.fit();
   updateCellSelectionUi();
+  scheduleDraftSave();
   if (mode === 'pattern' && window.matchMedia('(max-width: 760px)').matches) {
     const rect = $('#resultStage').getBoundingClientRect();
     renderer.zoomAt(1.7, rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -1212,7 +1290,7 @@ function applyPatternCrop() {
     return notify('调整后的颜色统计校验失败，图纸没有被修改', 'error');
   }
 
-  pushPatternSnapshot(state.patternUndoHistory, snapshot, PATTERN_UNDO_LIMIT);
+  recordPatternEdit(snapshot);
   state.highlightedCode = null;
   state.viewport = { zoom: 1, x: 0, y: 0 };
   clearSelectedCells({ redraw: false });
@@ -1229,11 +1307,14 @@ function applyPatternCrop() {
   notify(`图纸已调整为 ${width} × ${height}格（${changed.join('，')}）`, 'success', 5000);
 }
 
-function undoLastPatternEdit() {
+function undoLastPatternEdit(redo = false) {
+  if (state.generating) return;
   const previousWidth = state.currentPattern?.width;
   const previousHeight = state.currentPattern?.height;
-  if (!state.currentPattern || !restorePatternSnapshot(state.patternUndoHistory, state.currentPattern)) {
-    notify('还没有可撤销的图纸修改');
+  const from = redo ? state.patternRedoHistory : state.patternUndoHistory;
+  const to = redo ? state.patternUndoHistory : state.patternRedoHistory;
+  if (!state.currentPattern || !transferPatternSnapshot(from, to, state.currentPattern, PATTERN_UNDO_LIMIT)) {
+    notify(redo ? '还没有可重做的图纸修改' : '还没有可撤销的图纸修改');
     return;
   }
   if (!recalculatePatternStatistics({ preserveBackgroundMask: true })) {
@@ -1251,7 +1332,7 @@ function undoLastPatternEdit() {
   renderStatistics();
   renderer.rebuild();
   if (sizeChanged) renderer.fit();
-  notify('已撤销上一次图纸修改', 'success');
+  notify(redo ? '已重做图纸修改' : '已撤销上一次图纸修改', 'success');
 }
 
 function applyColorReplacement() {
@@ -1264,7 +1345,7 @@ function applyColorReplacement() {
 
   const cellReplacement = Boolean(replacementCell);
   const selectedCount = replacementCells?.length || 0;
-  const snapshot = createPatternSnapshot(state.currentPattern);
+  const snapshot = createPatternStateSnapshot(state.currentPattern);
   const replaced = batchReplacement
     ? replacePatternCells(state.currentPattern, replacementCells, target.index)
     : cellReplacement
@@ -1273,11 +1354,11 @@ function applyColorReplacement() {
   if (!replaced) return notify(batchReplacement ? '所选格子已经是这个颜色' : '当前格子的颜色没有发生变化', 'error');
 
   if (!recalculatePatternStatistics()) {
-    if (snapshot) state.currentPattern.indices.set(snapshot);
+    if (snapshot) state.currentPattern.indices.set(snapshot.indices);
     recalculatePatternStatistics();
     return notify('替换后的颜色统计校验失败，请重新生成图纸', 'error');
   }
-  pushPatternSnapshot(state.patternUndoHistory, snapshot, PATTERN_UNDO_LIMIT);
+  recordPatternEdit(snapshot);
   state.highlightedCode = batchReplacement || cellReplacement || target.excludeFromStatistics ? null : target.code;
   if (!target.manualOnly) rememberReplacementColor(target.code);
   if (batchReplacement) {
@@ -1304,17 +1385,17 @@ function replaceCellWithBlank(cell) {
   const blank = state.palette.find((color) => color.manualOnly);
   if (!blank) return notify('纯白留白加载失败，请刷新页面', 'error');
   if (cell.colorIndex === blank.index) return notify('这个格子已经是纯白留白');
-  const snapshot = createPatternSnapshot(state.currentPattern);
+  const snapshot = createPatternStateSnapshot(state.currentPattern);
   if (!replacePatternCell(state.currentPattern, cell.position, blank.index)) {
     return notify('当前格子没有发生变化', 'error');
   }
 
   if (!recalculatePatternStatistics()) {
-    if (snapshot) state.currentPattern.indices.set(snapshot);
+    if (snapshot) state.currentPattern.indices.set(snapshot.indices);
     recalculatePatternStatistics();
     return notify('快捷留白后的颜色统计校验失败，请重新生成图纸', 'error');
   }
-  pushPatternSnapshot(state.patternUndoHistory, snapshot, PATTERN_UNDO_LIMIT);
+  recordPatternEdit(snapshot);
 
   state.highlightedCode = null;
   renderStatistics();
@@ -1432,6 +1513,7 @@ function bindResults() {
   const watermarkText = $('#tiledWatermarkText');
   watermarkText.value = DEFAULT_TILED_WATERMARK;
   watermarkEnabled.addEventListener('change', syncWatermarkSetting);
+  watermarkText.addEventListener('input', scheduleDraftSave);
   syncWatermarkSetting();
 
   $$('.mode-switch button').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
@@ -1535,7 +1617,94 @@ function bindResults() {
   });
 }
 
+async function initializeDraft() {
+  try {
+    const draft = await readLatestDraft();
+    if (!draft?.project || state.image) return;
+    latestDraft = draft;
+    $('#draftName').textContent = draft.name || '未命名草稿';
+    const date = new Date(draft.updatedAt);
+    const dimensions = draft.project.pattern;
+    $('#draftMeta').textContent = `${Number.isNaN(date.getTime()) ? '' : date.toLocaleString('zh-CN')} · ${dimensions ? `${dimensions.width} × ${dimensions.height} 格` : '已保存原图与设置'}`;
+    const thumbnail = typeof draft.thumbnail === 'string' && draft.thumbnail.startsWith('data:image/png;base64,') ? draft.thumbnail : '';
+    $('#draftThumbnail').hidden = !thumbnail;
+    if (thumbnail) $('#draftThumbnail').src = thumbnail;
+    $('#draftCard').hidden = false;
+    $('#draftStatus').textContent = '发现上次的本机草稿';
+  } catch {
+    $('#draftStatus').textContent = '草稿存储不可用，请保存工程';
+    $('#draftStatus').dataset.status = 'error';
+  }
+}
+
+async function initializeExample() {
+  try {
+    const image = $('#exampleImage');
+    await image.decode();
+    const source = createAdjustedCanvas(image, { rotation: 0, flipH: false, flipV: false }, getColorStyleAdjustments(state.adjustments, 'vivid'), 1800, null);
+    const pixels = getGridPixels(source, 70, 104);
+    const pattern = await generatePattern({
+      pixels, width: 70, height: 104,
+      palette: state.palette.filter((color) => !color.manualOnly),
+      maxColors: 24, reduceIsolated: true, mergeColors: true,
+    });
+    pattern.backgroundMask = createWhiteBackgroundMask(pattern, state.palette, pixels);
+    const statistics = calculateStatistics(pattern.indices, state.palette, pattern.backgroundMask);
+    drawPatternSheet($('#examplePattern').getContext('2d'), pattern, state.palette, statistics, { cell: 16 });
+    $('#exampleSummary').textContent = `70 × 104 格 · 实际 ${statistics.length} 色 · ${number.format(statisticsTotal(statistics))} 颗豆。点击试做，可继续改色。`;
+  } catch {
+    $('#exampleSummary').textContent = '点击试做，即可查看这张小猫生成的图纸。';
+    $('#examplePattern').hidden = true;
+  }
+}
+
+function bindWorkspace() {
+  $('#undoEdit').addEventListener('click', () => undoLastPatternEdit());
+  $('#redoEdit').addEventListener('click', () => undoLastPatternEdit(true));
+  $('#fitCanvas').addEventListener('click', () => renderer.fit());
+  for (const [id, factor] of [['zoomIn', 1.3], ['zoomOut', 1 / 1.3]]) {
+    $(`#${id}`).addEventListener('click', () => {
+      const rect = $('#resultStage').getBoundingClientRect();
+      renderer.zoomAt(factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    });
+  }
+  $$('[data-workspace-panel]').forEach((button) => button.addEventListener('click', () => setWorkspacePanel(button.dataset.workspacePanel)));
+  $('#tryExample').addEventListener('click', async () => {
+    const button = $('#tryExample'); button.disabled = true;
+    try {
+      const response = await fetch($('#exampleImage').src);
+      if (!response.ok) throw new Error('示例图片读取失败，请重试');
+      const file = new File([await response.blob()], '小猫示例.png', { type: 'image/png' });
+      if (await loadFile(file)) {
+        state.currentSize = { width: 70, height: 104 };
+        state.maxColors = 24; state.colorStyle = 'vivid';
+        syncRestoredChoices();
+        await generate();
+      }
+    } catch (error) { notify(error.message || '示例加载失败', 'error'); }
+    finally { button.disabled = false; }
+  });
+  $('#restoreDraft').addEventListener('click', async () => {
+    if (!latestDraft?.project) return;
+    const button = $('#restoreDraft'); button.disabled = true;
+    try {
+      await openProject(new File([serializeProjectDocument(latestDraft.project)], '本机草稿.perlerproj', { type: 'application/json' }), { draft: true });
+    } finally { button.disabled = false; }
+  });
+  $('#retryDraft').addEventListener('click', () => autoDraft.flush());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') autoDraft.flush();
+  });
+  window.addEventListener('pagehide', () => autoDraft.flush());
+  window.addEventListener('beforeunload', (event) => {
+    if (autoDraft.pending) { event.preventDefault(); event.returnValue = ''; }
+  });
+}
+
 buildChoices(); bindUpload(); bindLinkImport(); bindProjectFiles(); bindChoices(); bindDialogs(); bindResults();
+bindWorkspace();
+initializeDraft();
+initializeExample();
 $$('[data-transform]').forEach((button) => button.addEventListener('click', () => changeTransform(button.dataset.transform)));
 $('#generateButton').addEventListener('click', generate);
 window.addEventListener('resize', () => { if (state.image) drawSourcePreview(); });
@@ -1547,9 +1716,11 @@ document.addEventListener('keydown', (event) => {
     && !event.shiftKey
     && !event.altKey
     && event.key.toLowerCase() === 'z';
-  if (undoShortcut && !editingText && !$('#replaceColorDialog').open) {
+  const redoShortcut = (event.ctrlKey || event.metaKey) && !event.altKey
+    && ((event.shiftKey && event.key.toLowerCase() === 'z') || (!event.shiftKey && event.key.toLowerCase() === 'y'));
+  if ((undoShortcut || redoShortcut) && !editingText && !document.querySelector('dialog[open]')) {
     event.preventDefault();
-    undoLastPatternEdit();
+    undoLastPatternEdit(redoShortcut);
     return;
   }
   if (event.key === 'Escape' && !$('#replaceColorDialog').open) {

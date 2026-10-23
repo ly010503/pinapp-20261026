@@ -53,3 +53,10 @@ export function restorePatternSnapshot(history, pattern) {
   }
   return false;
 }
+
+export function transferPatternSnapshot(from, to, pattern, limit = 20) {
+  const current = createPatternStateSnapshot(pattern);
+  if (!current || !restorePatternSnapshot(from, pattern)) return false;
+  pushPatternSnapshot(to, current, limit);
+  return true;
+}

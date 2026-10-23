@@ -22,6 +22,7 @@ const state = {
   selectedCellPositions: new Set(),
   selectionAnchorPosition: null,
   patternUndoHistory: [],
+  patternRedoHistory: [],
   generating: false,
   dirty: false,
   options: { reduceIsolated: true, mergeColors: true },

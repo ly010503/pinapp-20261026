@@ -166,7 +166,11 @@ function normalizePattern(pattern, currentPaletteCodes) {
     if (!Number.isInteger(currentIndex) || currentIndex > 255) fail('当前色卡缺少工程使用的颜色');
     remapped[position] = currentIndex;
   }
-  return { width, height, indices: remapped, sourcePixels: new Uint8ClampedArray(sourcePixels) };
+  const backgroundMask = pattern.backgroundMask == null
+    ? null : base64ToBytes(pattern.backgroundMask, '图纸留白');
+  if (backgroundMask && (backgroundMask.length !== width * height
+    || backgroundMask.some((value) => value !== 0 && value !== 1))) fail('图纸留白数据无效');
+  return { width, height, indices: remapped, sourcePixels: new Uint8ClampedArray(sourcePixels), backgroundMask };
 }
 
 function normalizePreferences(preferences, hasPattern) {
@@ -191,6 +195,7 @@ export function createProjectDocument({ name, image, settings, pattern, preferen
     paletteCodes: [...paletteCodes],
     indices: bytesToBase64(pattern.indices),
     sourcePixels: bytesToBase64(pattern.sourcePixels),
+    backgroundMask: pattern.backgroundMask ? bytesToBase64(pattern.backgroundMask) : null,
   } : null;
   return {
     format: PROJECT_FORMAT,
